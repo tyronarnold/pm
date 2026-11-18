@@ -4,7 +4,12 @@ Project management app: Next.js frontend, FastAPI backend, SQLite, AI chat via O
 
 ![Kanban Studio board with the AI Assistant sidebar](docs/screenshot.png)
 
-Requires Docker and a `.env` file in the repo root containing `OPENROUTER_API_KEY`.
+Requires Docker and a `.env` file in the repo root containing `OPENROUTER_API_KEY`. Optional settings in `.env`:
+
+- `SESSION_SECRET`: a long random string that signs the sign-in cookie. Without it a random one is used and every restart signs you out.
+- `SESSION_HTTPS_ONLY=true`: only when the app is served over HTTPS (marks the cookie Secure).
+
+Sign in with `user` / `password`.
 
 ## Run
 

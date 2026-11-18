@@ -231,6 +231,8 @@ def login(credentials: Credentials, request: Request):
     return {"username": credentials.username}
 ```
 
+> **Update:** this is the MVP version. The login now checks the password against an argon2 hash stored in the database and limits failed attempts; see self-review suggestion 5 and `backend/app/auth.py`.
+
 - `SessionMiddleware` stores the session in a **signed cookie**. "Signed" means the server adds a cryptographic signature, so the browser can hold the cookie but cannot tamper with it (changing the username would break the signature).
 - `current_user` is a **dependency**. Any route that declares `username: str = Depends(current_user)` gets the signed-in username, or the request is rejected with `401` before the route code runs. Think of it as a per-route middleware:
 
@@ -890,3 +892,5 @@ For an MVP that runs on your own machine this is fine, but none of it is product
 - There is no rate limiting on `/api/login`.
 
 The database is already ready for multiple users. The next steps would be a `password_hash` column (using a library such as `argon2-cffi` rather than hand-rolled hashing), reading the session secret from an environment variable, and marking the cookie `https_only` once the app is served over HTTPS.
+
+> **Done:** passwords are stored as argon2id hashes (`backend/app/auth.py`), the session secret comes from `SESSION_SECRET` in `.env`, `SESSION_HTTPS_ONLY=true` marks the cookie Secure when served over HTTPS, and five failed logins for a username within 15 minutes lock it temporarily. The MVP account is still `user` / `password`, now checked against its hash.

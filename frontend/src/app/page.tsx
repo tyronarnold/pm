@@ -36,11 +36,11 @@ export default function Home() {
   };
 
   const handleLogin = async (username: string, password: string) => {
-    const ok = await login(username, password);
-    if (ok) {
+    const error = await login(username, password);
+    if (!error) {
       reload();
     }
-    return ok;
+    return error;
   };
 
   const handleLogout = async () => {

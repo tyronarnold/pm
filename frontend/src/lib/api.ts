@@ -19,13 +19,18 @@ export const getCurrentUser = async (): Promise<string | null> => {
   return data.username;
 };
 
-export const login = async (username: string, password: string) => {
+// Returns null on success, or a message for the user (wrong credentials, or too many attempts).
+export const login = async (username: string, password: string): Promise<string | null> => {
   const response = await fetch("/api/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password } satisfies Credentials),
   });
-  return response.ok;
+  if (response.ok) {
+    return null;
+  }
+  const body = await response.json().catch(() => ({}));
+  return typeof body.detail === "string" ? body.detail : "Invalid username or password.";
 };
 
 export const logout = async () => {

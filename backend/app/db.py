@@ -7,6 +7,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
+    password_hash TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -28,18 +29,35 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    """Upgrade databases created before `column` existed; their data is kept."""
+    if column not in [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_db() -> None:
     with closing(connect()) as conn:
         conn.executescript(SCHEMA)
-        # Databases created before boards had a version keep their data and start at version 1.
-        columns = [row[1] for row in conn.execute("PRAGMA table_info(boards)")]
-        if "version" not in columns:
-            conn.execute("ALTER TABLE boards ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+        _add_column_if_missing(conn, "boards", "version", "INTEGER NOT NULL DEFAULT 1")
+        _add_column_if_missing(conn, "users", "password_hash", "TEXT")
 
 
-def add_user(username: str) -> None:
+def add_user(username: str, password_hash: str | None = None) -> None:
+    """Create the user if missing. A password hash is only set if the user has none yet."""
     with closing(connect()) as conn:
-        conn.execute("INSERT OR IGNORE INTO users (username) VALUES (?)", (username,))
+        conn.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)"
+            " ON CONFLICT (username) DO UPDATE SET password_hash = excluded.password_hash"
+            " WHERE users.password_hash IS NULL",
+            (username, password_hash),
+        )
+
+
+def get_password_hash(username: str) -> str | None:
+    """The user's password hash, or None if the user does not exist or has no password."""
+    with closing(connect()) as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE username = ?", (username,)).fetchone()
+    return row[0] if row else None
 
 
 def get_board(username: str) -> tuple[str, int] | None:

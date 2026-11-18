@@ -5,7 +5,7 @@ Each part has a checklist (checked off as work is done), tests, and success crit
 ## Decisions
 
 - AI model: `anthropic/claude-haiku-5.5` via OpenRouter, reasoning effort `low`. The OpenRouter call uses the `openai` Python SDK pointed at `https://openrouter.ai/api/v1`.
-- Sign-in: backend checks the hardcoded credentials and sets a signed session cookie (Starlette `SessionMiddleware`). All `/api` routes except login require it.
+- Sign-in: backend checks the password against an argon2 hash stored in `users` (the MVP account is still `user` / `password`) and sets a signed session cookie (Starlette `SessionMiddleware`). All `/api` routes except login require it. Session secret from `SESSION_SECRET`, login rate limited (see Follow-ups).
 - Database: SQLite. One row per user's board, holding the whole board as JSON (same `BoardData` shape the frontend uses).
 - AI board changes: the AI returns a list of operations (create / edit / move / delete card), applied by the backend. Not a whole-board replacement.
 - Chat history: kept in the browser only, sent with each chat request, lost on refresh.
@@ -236,7 +236,7 @@ Tests:
 
 ---
 
-## Follow-ups (not started)
+## Follow-ups (all done)
 
 From the self-review in `docs/tutorial.md`, section 7:
 - [x] Prevent out-of-order and conflicting saves (version number on the board, `409` on stale writes; one pending save at a time in the frontend)
@@ -258,7 +258,12 @@ From the self-review in `docs/tutorial.md`, section 7:
   - Drift is caught on both sides: a backend test fails if `openapi.json` is stale, and the frontend type check fails if the generated types no longer fit the frontend code (checked by renaming a field: 33 type errors)
   - The Dockerfile has a `backend` stage, which the generator builds on its own, so frontend type errors cannot block regenerating the types (found when the generator failed to recover from a broken `api-types.ts`)
   - Cards added in the UI without details now get an empty string, like cards the AI creates (was "No details yet.")
-- [ ] Real sign-in: hashed passwords in `users`, session secret from an environment variable, `https_only` cookie, login rate limiting
+- [x] Real sign-in: hashed passwords in `users`, session secret from an environment variable, `https_only` cookie, login rate limiting
+  - `users.password_hash` (argon2id via `argon2-cffi`), added to existing databases at startup; the `user` account gets the hash of `password` if it has none, so the MVP sign-in still works. An unknown username is checked against a dummy hash so response times do not reveal which usernames exist
+  - `SESSION_SECRET` from `.env` signs the cookie; without it a random secret is used and a warning is logged (restarts then sign everyone out)
+  - `SESSION_HTTPS_ONLY=true` marks the cookie Secure. Opt-in, because the app runs over plain HTTP on localhost and a Secure cookie would not be sent there. `same_site=lax` is set explicitly
+  - Rate limiting: 5 failed logins for a username within 15 minutes lock it (429 with a message the login form shows) until the oldest failure expires. Keyed by username, because behind Docker's port mapping every client has the same address; kept in memory, so it resets on restart
+  - Checked on the real app: the existing database was upgraded, `user` / `password` still signs in, and the board was unchanged
 
 Notes for working on the project:
 - On Windows, run Vitest from an uppercase `C:\` path (PowerShell or cmd); Git Bash's lowercase `c:\` loads Vitest twice and breaks the jest-dom matchers

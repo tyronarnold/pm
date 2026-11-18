@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 
 type LoginFormProps = {
-  onLogin: (username: string, password: string) => Promise<boolean>;
+  // Resolves to null on success, or the message to show.
+  onLogin: (username: string, password: string) => Promise<string | null>;
 };
 
 export const LoginForm = ({ onLogin }: LoginFormProps) => {
@@ -12,9 +13,7 @@ export const LoginForm = ({ onLogin }: LoginFormProps) => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    if (!(await onLogin(username, password))) {
-      setError("Invalid username or password.");
-    }
+    setError((await onLogin(username, password)) ?? "");
   };
 
   return (

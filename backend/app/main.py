@@ -1,4 +1,3 @@
-import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,24 +7,31 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
 
-from app import ai, db
+from app import ai, auth, db
 from app.board import DEFAULT_BOARD, Board, apply_operations, column_ids
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
+# The MVP's single account. Its password is only used to set the stored hash the
+# first time (or for databases created before passwords were hashed).
 USERNAME = "user"
-PASSWORD = "password"
+DEFAULT_PASSWORD = "password"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    db.add_user(USERNAME)
+    db.add_user(USERNAME, auth.hash_password(DEFAULT_PASSWORD))
     yield
 
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth.session_secret(),
+    https_only=auth.https_only(),
+    same_site="lax",
+)
 
 
 class Credentials(BaseModel):
@@ -45,12 +51,26 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/api/login")
+@app.post(
+    "/api/login",
+    responses={
+        401: {"description": "Wrong username or password"},
+        429: {"description": "Too many failed attempts for this username"},
+    },
+)
 def login(credentials: Credentials, request: Request):
-    if credentials.username != USERNAME or credentials.password != PASSWORD:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    request.session["username"] = credentials.username
-    return {"username": credentials.username}
+    username = credentials.username
+    if auth.is_locked_out(username):
+        raise HTTPException(
+            status_code=429,
+            detail="Too many failed sign-in attempts. Please wait 15 minutes and try again.",
+        )
+    if not auth.verify_password(db.get_password_hash(username), credentials.password):
+        auth.record_failure(username)
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+    auth.clear_failures(username)
+    request.session["username"] = username
+    return {"username": username}
 
 
 @app.post("/api/logout")

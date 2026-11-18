@@ -95,6 +95,23 @@ describe("Home", () => {
     expect(screen.queryAllByTestId(/column-/)).toHaveLength(0);
   });
 
+  it("shows the server's message when sign-in is locked", async () => {
+    mockFetch((url) =>
+      url === "/api/login"
+        ? jsonResponse(429, {
+            detail: "Too many failed sign-in attempts. Please wait 15 minutes and try again.",
+          })
+        : jsonResponse(401, {})
+    );
+    render(<Home />);
+    await signIn("user", "password");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Too many failed sign-in attempts. Please wait 15 minutes and try again."
+    );
+    expect(screen.queryAllByTestId(/column-/)).toHaveLength(0);
+  });
+
   it("shows an error with a retry when the board cannot be loaded", async () => {
     let boardAvailable = false;
     vi.stubGlobal(

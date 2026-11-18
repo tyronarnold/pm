@@ -44,6 +44,12 @@
               }
             }
           },
+          "401": {
+            "description": "Wrong username or password"
+          },
+          "429": {
+            "description": "Too many failed attempts for this username"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
