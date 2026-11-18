@@ -6,7 +6,9 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.15-slim
+# The backend on its own. `npm run api:types` builds only this stage (--target backend)
+# to write openapi.json, so frontend type errors cannot block regenerating the types.
+FROM python:3.15-slim AS backend
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /uvx /bin/
 
@@ -16,6 +18,11 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen
 
 COPY backend/ ./
+# Filled with the frontend in the final stage; empty here so the app can start without it.
+RUN mkdir -p static
+
+FROM backend
+
 COPY --from=frontend /frontend/out ./static
 
 EXPOSE 8000

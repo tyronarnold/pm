@@ -1,4 +1,14 @@
+import type { components } from "@/lib/api-types";
 import type { BoardData } from "@/lib/kanban";
+
+// Request and response shapes generated from the backend (`npm run api:types`).
+type Schemas = components["schemas"];
+// The version goes up by one on every save; saves must say which version they are based on.
+export type VersionedBoard = Schemas["VersionedBoard"];
+export type ChatMessage = Schemas["ChatMessage"];
+type ChatRequest = Schemas["ChatRequest"];
+type ChatResponse = Schemas["ChatResponse"];
+type Credentials = Schemas["Credentials"];
 
 export const getCurrentUser = async (): Promise<string | null> => {
   const response = await fetch("/api/me");
@@ -13,7 +23,7 @@ export const login = async (username: string, password: string) => {
   const response = await fetch("/api/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password } satisfies Credentials),
   });
   return response.ok;
 };
@@ -21,9 +31,6 @@ export const login = async (username: string, password: string) => {
 export const logout = async () => {
   await fetch("/api/logout", { method: "POST" });
 };
-
-// The version goes up by one on every save; saves must say which version they are based on.
-export type VersionedBoard = { version: number; board: BoardData };
 
 // Throws if the board could not be loaded.
 export const getBoard = async (): Promise<VersionedBoard> => {
@@ -34,8 +41,6 @@ export const getBoard = async (): Promise<VersionedBoard> => {
   return response.json();
 };
 
-export type ChatMessage = { role: "user" | "assistant"; content: string };
-
 const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again.";
 
 // `board` is null when the AI made no changes. On failure, throws an Error whose
@@ -43,13 +48,13 @@ const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again."
 export const sendChat = async (
   message: string,
   history: ChatMessage[]
-): Promise<{ reply: string; board: BoardData | null; version: number }> => {
+): Promise<ChatResponse> => {
   let response: Response;
   try {
     response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history } satisfies ChatRequest),
     });
   } catch {
     throw new Error(CHAT_UNAVAILABLE);
@@ -71,7 +76,7 @@ export const saveBoard = async (board: BoardData, version: number): Promise<Save
     const response = await fetch("/api/board", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version, board }),
+      body: JSON.stringify({ version, board } satisfies VersionedBoard),
     });
     if (response.ok) {
       const saved: VersionedBoard = await response.json();

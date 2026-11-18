@@ -1,19 +1,9 @@
-export type Card = {
-  id: string;
-  title: string;
-  details: string;
-};
+import type { components } from "@/lib/api-types";
 
-export type Column = {
-  id: string;
-  title: string;
-  cardIds: string[];
-};
-
-export type BoardData = {
-  columns: Column[];
-  cards: Record<string, Card>;
-};
+// Generated from the backend's Pydantic models (`npm run api:types`), so they cannot drift apart.
+export type Card = components["schemas"]["Card"];
+export type Column = components["schemas"]["Column"];
+export type BoardData = components["schemas"]["Board"];
 
 // Card background per column (the column set is fixed).
 export const columnColors: Record<string, string> = {
@@ -169,6 +159,43 @@ export const moveCard = (
     return column;
   });
 };
+
+// Board updates. Each returns a new board and leaves the one passed in unchanged.
+
+export const renameColumn = (board: BoardData, columnId: string, title: string): BoardData => ({
+  ...board,
+  columns: board.columns.map((column) =>
+    column.id === columnId ? { ...column, title } : column
+  ),
+});
+
+// Adds the card at the bottom of the column.
+export const addCard = (board: BoardData, columnId: string, card: Card): BoardData => ({
+  ...board,
+  cards: { ...board.cards, [card.id]: card },
+  columns: board.columns.map((column) =>
+    column.id === columnId ? { ...column, cardIds: [...column.cardIds, card.id] } : column
+  ),
+});
+
+export const editCard = (
+  board: BoardData,
+  cardId: string,
+  title: string,
+  details: string
+): BoardData => ({
+  ...board,
+  cards: { ...board.cards, [cardId]: { id: cardId, title, details } },
+});
+
+export const deleteCard = (board: BoardData, cardId: string): BoardData => ({
+  ...board,
+  cards: Object.fromEntries(Object.entries(board.cards).filter(([id]) => id !== cardId)),
+  columns: board.columns.map((column) => ({
+    ...column,
+    cardIds: column.cardIds.filter((id) => id !== cardId),
+  })),
+});
 
 export const createId = (prefix: string) => {
   const randomPart = Math.random().toString(36).slice(2, 8);

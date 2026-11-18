@@ -443,6 +443,8 @@ const handleAddCard = (columnId: string, title: string, details: string) => {
 };
 ```
 
+> **Update:** these updates now live as small pure functions in `kanban.ts` (`addCard`, `editCard`, `deleteCard`, `renameColumn`), so the handler is a single line: `update(addCard(board, columnId, { id: createId("card"), title, details }))`. Missing details are now an empty string. See self-review suggestion 4.
+
 This is **immutable updating**: nothing is changed in place. Spreads (`...board`) copy objects, `map` returns a new array, and only the parts that change get new values. React compares old and new state by reference, so mutating the existing object would leave React thinking nothing changed.
 
 Renaming a column is handled differently on purpose:
@@ -876,6 +878,8 @@ function boardReducer(board: BoardData, action: Action): BoardData { ... }
 ```
 
 - The board shape is written once in TypeScript (`kanban.ts`) and once in Python (`board.py`), and the demo board appears in both. FastAPI already publishes an OpenAPI schema at `/openapi.json`; a tool like `openapi-typescript` can generate the TypeScript types from it, so the two sides cannot drift apart. There are already small inconsistencies: a card added in the UI without details gets "No details yet.", while one added by the AI gets an empty string.
+
+> **Done:** the board updates are now pure functions in `kanban.ts` (not a reducer, because each change goes straight to the save queue), the TypeScript types are generated from the backend with `npm run api:types`, a backend test fails if the saved schema is stale, and both kinds of new card get an empty string for missing details.
 
 ### 5. Sign-in is a placeholder
 

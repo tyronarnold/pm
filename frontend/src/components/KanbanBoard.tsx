@@ -15,7 +15,16 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { saveBoard } from "@/lib/api";
-import { columnColors, createId, moveCard, type BoardData } from "@/lib/kanban";
+import {
+  addCard,
+  columnColors,
+  createId,
+  deleteCard,
+  editCard,
+  moveCard,
+  renameColumn,
+  type BoardData,
+} from "@/lib/kanban";
 
 type KanbanBoardProps = {
   initialBoard: BoardData;
@@ -107,51 +116,16 @@ export const KanbanBoard = ({ initialBoard, initialVersion, onLogout }: KanbanBo
   };
 
   // Typing only updates local state; the title is saved on blur / Enter.
-  const handleRenameColumn = (columnId: string, title: string) => {
-    setBoard({
-      ...board,
-      columns: board.columns.map((column) =>
-        column.id === columnId ? { ...column, title } : column
-      ),
-    });
-  };
+  const handleRenameColumn = (columnId: string, title: string) =>
+    setBoard(renameColumn(board, columnId, title));
 
-  const handleAddCard = (columnId: string, title: string, details: string) => {
-    const id = createId("card");
-    update({
-      ...board,
-      cards: {
-        ...board.cards,
-        [id]: { id, title, details: details || "No details yet." },
-      },
-      columns: board.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: [...column.cardIds, id] }
-          : column
-      ),
-    });
-  };
+  const handleAddCard = (columnId: string, title: string, details: string) =>
+    update(addCard(board, columnId, { id: createId("card"), title, details }));
 
-  const handleEditCard = (cardId: string, title: string, details: string) => {
-    update({
-      ...board,
-      cards: { ...board.cards, [cardId]: { id: cardId, title, details } },
-    });
-  };
+  const handleEditCard = (cardId: string, title: string, details: string) =>
+    update(editCard(board, cardId, title, details));
 
-  const handleDeleteCard = (columnId: string, cardId: string) => {
-    update({
-      ...board,
-      cards: Object.fromEntries(
-        Object.entries(board.cards).filter(([id]) => id !== cardId)
-      ),
-      columns: board.columns.map((column) =>
-        column.id === columnId
-          ? { ...column, cardIds: column.cardIds.filter((id) => id !== cardId) }
-          : column
-      ),
-    });
-  };
+  const handleDeleteCard = (cardId: string) => update(deleteCard(board, cardId));
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
   const activeColumn = board.columns.find((column) =>

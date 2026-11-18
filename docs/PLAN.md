@@ -252,7 +252,12 @@ From the self-review in `docs/tutorial.md`, section 7:
   - `frontend/tests/global-setup.ts` (Playwright `globalSetup`) builds the image, starts a `pm-test` container on port 8001 and removes it after the run (also removes a leftover one from an interrupted run). It uses no volume at all: each run starts with an empty database, which is simpler than a separate named volume and needs no cleanup
   - Playwright's `baseURL` is http://127.0.0.1:8001; the real app on port 8000 no longer needs to be running for e2e tests
   - Checked: after a full run the real board was byte-for-byte unchanged (same version), and no `pm-test` container was left behind
-- [ ] Move frontend board updates into pure functions or a reducer; generate TypeScript types from FastAPI's OpenAPI schema so the two sides cannot drift (and align the empty-details default)
+- [x] Move frontend board updates into pure functions or a reducer; generate TypeScript types from FastAPI's OpenAPI schema so the two sides cannot drift (and align the empty-details default)
+  - Pure functions rather than a reducer (`renameColumn`, `addCard`, `editCard`, `deleteCard` in `kanban.ts`, next to `moveCard`), because each change must hand the new board straight to the save queue; `KanbanBoard`'s handlers are now one line each
+  - Types: `backend/openapi.json` (written by `python -m app.openapi`) is turned into `frontend/src/lib/api-types.ts` by openapi-typescript; `kanban.ts` and `api.ts` use those types. One command regenerates both: `npm run api:types`. openapi-typescript 7.13.0 runs through `npx` (user approved the download) rather than as a dependency, because it declares a TypeScript 5 peer and the project uses TypeScript 6
+  - Drift is caught on both sides: a backend test fails if `openapi.json` is stale, and the frontend type check fails if the generated types no longer fit the frontend code (checked by renaming a field: 33 type errors)
+  - The Dockerfile has a `backend` stage, which the generator builds on its own, so frontend type errors cannot block regenerating the types (found when the generator failed to recover from a broken `api-types.ts`)
+  - Cards added in the UI without details now get an empty string, like cards the AI creates (was "No details yet.")
 - [ ] Real sign-in: hashed passwords in `users`, session secret from an environment variable, `https_only` cookie, login rate limiting
 
 Notes for working on the project:
