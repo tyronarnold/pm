@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Board",
+  "description": "A user's Kanban board, stored as JSON in boards.data. Same shape as BoardData in frontend/src/lib/kanban.ts.",
+  "type": "object",
+  "required": ["columns", "cards"],
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Fixed set of columns, in display order. Only titles change.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "cardIds"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string" },
+          "cardIds": {
+            "description": "Card ids in display order (top to bottom).",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "cards": {
+      "description": "Cards keyed by id. Each key equals the card's id.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "title", "details"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "details": { "type": "string" }
+        }
+      }
+    }
+  }
+}

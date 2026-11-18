@@ -10,6 +10,17 @@
   --surface-strong: #ffffff;
   --stroke: rgba(3, 33, 71, 0.08);
   --shadow: 0 18px 40px rgba(3, 33, 71, 0.12);
+  --nav-chip: #4c9bd2;
+  --logout: #ba001d;
+  --column-surface: #f8fafc;
+  --badge: #e9edf2;
+  --card-text: #4b5563;
+  --add-card: #94bdf2;
+  --card-backlog: #d9d9d9;
+  --card-discovery: #b3f5fa;
+  --card-progress: #c8bfe3;
+  --card-review: #f8d597;
+  --card-done: #b6e8c3;
 }
 
 @theme inline {

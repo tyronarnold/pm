@@ -15,6 +15,15 @@ export type BoardData = {
   cards: Record<string, Card>;
 };
 
+// Card background per column (the column set is fixed).
+export const columnColors: Record<string, string> = {
+  "col-backlog": "var(--card-backlog)",
+  "col-discovery": "var(--card-discovery)",
+  "col-progress": "var(--card-progress)",
+  "col-review": "var(--card-review)",
+  "col-done": "var(--card-done)",
+};
+
 export const initialData: BoardData = {
   columns: [
     { id: "col-backlog", title: "Backlog", cardIds: ["card-1", "card-2"] },

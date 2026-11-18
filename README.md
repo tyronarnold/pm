@@ -1,0 +1,40 @@
+# Kanban Studio
+
+Project management app: Next.js frontend, FastAPI backend, SQLite, AI chat via OpenRouter. Runs in one Docker container.
+
+Requires Docker and a `.env` file in the repo root containing `OPENROUTER_API_KEY`.
+
+## Run
+
+Mac / Linux:
+
+```
+./scripts/start.sh
+./scripts/stop.sh
+```
+
+Windows:
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\start.ps1
+powershell -ExecutionPolicy Bypass -File scripts\stop.ps1
+```
+
+The app runs at http://localhost:8000.
+
+## Test
+
+Backend (in the container image built by the start script):
+
+```
+docker run --rm pm uv run --no-sync pytest
+```
+
+Add `--env-file .env` after `--rm` to also run the tests that call OpenRouter (otherwise they are skipped). `pytest -m live` runs only those.
+
+Frontend (from `frontend/`, after `npm install`; e2e needs the app running, resets the board of `user`, and its chat test calls the real AI):
+
+```
+npm run test:unit
+npm run test:e2e
+```
