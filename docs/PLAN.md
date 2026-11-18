@@ -239,7 +239,10 @@ Tests:
 ## Follow-ups (not started)
 
 From the self-review in `docs/tutorial.md`, section 7:
-- [ ] Prevent out-of-order and conflicting saves (version number on the board, `409` on stale writes; one pending save at a time in the frontend)
+- [x] Prevent out-of-order and conflicting saves (version number on the board, `409` on stale writes; one pending save at a time in the frontend)
+  - Backend: `boards.version` column (added to existing databases at startup, keeping their data); `GET /api/board` returns `{version, board}`; `PUT /api/board` takes `{version, board}` and returns `409` with the current board when the version is stale; the chat applies the AI's operations to the latest saved board after the model replies, and returns `board: null` when nothing changed
+  - Frontend: saves are queued and sent one at a time with the last confirmed version; a `409` loads the server's board and shows "Your board was changed somewhere else..."; boards returned by the chat replace the local board and its version
+  - Tests: pytest for versions, stale saves, upgrading an older database, and the AI applying its changes on top of a save made while it was working; Vitest for sequential saves, conflicts and chat versions; Playwright for two tabs editing the same board
 - [ ] Handle failures at the edges: board load error with retry, a timeout and clear error for AI calls, report skipped AI operations
 - [ ] Run Playwright against a separate test container and volume, so e2e tests do not reset the real `user` board
 - [ ] Move frontend board updates into pure functions or a reducer; generate TypeScript types from FastAPI's OpenAPI schema so the two sides cannot drift (and align the empty-details default)

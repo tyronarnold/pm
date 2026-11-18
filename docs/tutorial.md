@@ -421,6 +421,8 @@ const update = (next: BoardData) => {
 
 This is an **optimistic update**: the UI changes immediately, and the save happens in the background. If the save fails (server error, or the server is not reachable and `fetch` throws), an error message appears. `.catch(() => false)` turns a network exception into the same "not ok" result as an HTTP error, so both are handled by one line.
 
+> **Update:** this is the original version. Self-review suggestion 1 has since been implemented: boards now carry a version number, `persist` queues saves and sends them one at a time, and a conflicting save loads the latest board instead of overwriting it. See `KanbanBoard.tsx` and `docs/DATABASE.md` for the current code.
+
 Every user action builds a new board object and passes it to `update`. For example, adding a card:
 
 ```tsx
@@ -826,6 +828,8 @@ def put_board(update: BoardUpdate, username: str = Depends(current_user)):
 ```
 
 On the frontend, the simplest improvement is to make saves sequential: keep one pending save at a time and always send the latest board when it finishes.
+
+> **Done:** implemented as described. `PUT /api/board` takes `{version, board}` and returns `409` with the current board when the version is stale; the frontend queues saves and shows a notice on conflict; and the chat applies the AI's operations to the latest saved board after the model replies.
 
 ### 2. Failure cases at the edges are not handled
 

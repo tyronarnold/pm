@@ -12,7 +12,7 @@ const jsonResponse = (status: number, body: unknown) =>
 // Serves the board for GET /api/board; everything else goes to the handler.
 const mockFetch = (handler: (url: string, init?: RequestInit) => Response) => {
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
-    url === "/api/board" && !init ? jsonResponse(200, initialData) : handler(url, init)
+    url === "/api/board" && !init ? jsonResponse(200, { version: 1, board: initialData }) : handler(url, init)
   );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
@@ -54,7 +54,7 @@ describe("Home", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url === "/api/board" ? jsonResponse(200, board) : jsonResponse(200, { username: "user" })
+        url === "/api/board" ? jsonResponse(200, { version: 3, board }) : jsonResponse(200, { username: "user" })
       )
     );
     render(<Home />);

@@ -3,14 +3,13 @@
 import { useEffect, useState } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { LoginForm } from "@/components/LoginForm";
-import { getBoard, getCurrentUser, login, logout } from "@/lib/api";
-import type { BoardData } from "@/lib/kanban";
+import { getBoard, getCurrentUser, login, logout, type VersionedBoard } from "@/lib/api";
 
 type AuthState = "loading" | "signed-out" | "signed-in";
 
 export default function Home() {
   const [authState, setAuthState] = useState<AuthState>("loading");
-  const [board, setBoard] = useState<BoardData | null>(null);
+  const [board, setBoard] = useState<VersionedBoard | null>(null);
 
   useEffect(() => {
     getCurrentUser().then((username) =>
@@ -51,5 +50,11 @@ export default function Home() {
       </p>
     );
   }
-  return <KanbanBoard initialBoard={board} onLogout={handleLogout} />;
+  return (
+    <KanbanBoard
+      initialBoard={board.board}
+      initialVersion={board.version}
+      onLogout={handleLogout}
+    />
+  );
 }

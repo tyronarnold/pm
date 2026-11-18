@@ -92,6 +92,34 @@ test("keeps every change after a reload", async ({ page }) => {
   await expect(page.getByTestId("column-col-review").getByLabel("Column title")).toHaveValue("QA");
 });
 
+test("a stale tab loads the latest board instead of overwriting it", async ({ page }) => {
+  const other = await page.context().newPage();
+  await other.goto("/");
+  await expect(other.getByTestId("card-card-1")).toBeVisible();
+
+  // First tab saves an edit; the second tab still has the older version.
+  const card = page.getByTestId("card-card-1");
+  await card.getByRole("button", { name: "Edit Align roadmap themes", exact: true }).click();
+  await card.getByLabel("Card title").fill("Saved in the first tab");
+  await saved(page, () => card.getByRole("button", { name: "Save" }).click());
+
+  const conflict = other.waitForResponse(
+    (r) => r.url().endsWith("/api/board") && r.request().method() === "PUT"
+  );
+  await other
+    .getByRole("button", { name: "Delete Gather customer signals", exact: true })
+    .click();
+  expect((await conflict).status()).toBe(409);
+
+  await expect(other.getByText("changed somewhere else")).toBeVisible();
+  await expect(other.getByText("Saved in the first tab")).toBeVisible();
+  await expect(other.getByText("Gather customer signals")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Saved in the first tab")).toBeVisible();
+  await expect(page.getByText("Gather customer signals")).toBeVisible();
+});
+
 test("loads without console errors", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (message) => {

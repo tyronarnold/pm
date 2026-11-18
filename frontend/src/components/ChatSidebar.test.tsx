@@ -22,7 +22,7 @@ const send = async (text: string) => {
 };
 
 beforeEach(() => {
-  fetchMock = vi.fn(async () => jsonResponse(200, { reply: "Sure thing.", board: initialData }));
+  fetchMock = vi.fn(async () => jsonResponse(200, { reply: "Sure thing.", board: initialData, version: 2 }));
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -46,7 +46,7 @@ describe("ChatSidebar", () => {
     render(<ChatSidebar onBoardUpdate={() => {}} />);
     await send("First");
     await screen.findByText("Sure thing.");
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { reply: "Second reply", board: initialData }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { reply: "Second reply", board: null, version: 2 }));
     await send("Second");
     await screen.findByText("Second reply");
 
@@ -64,7 +64,16 @@ describe("ChatSidebar", () => {
     render(<ChatSidebar onBoardUpdate={onBoardUpdate} />);
     await send("Do something");
     await screen.findByText("Sure thing.");
-    expect(onBoardUpdate).toHaveBeenCalledWith(initialData);
+    expect(onBoardUpdate).toHaveBeenCalledWith(initialData, 2);
+  });
+
+  it("does not replace the board when the AI made no changes", async () => {
+    const onBoardUpdate = vi.fn();
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { reply: "You have 8 cards.", board: null, version: 1 }));
+    render(<ChatSidebar onBoardUpdate={onBoardUpdate} />);
+    await send("How many cards?");
+    await screen.findByText("You have 8 cards.");
+    expect(onBoardUpdate).not.toHaveBeenCalled();
   });
 
   it("shows a loading indicator while waiting", async () => {
@@ -76,7 +85,7 @@ describe("ChatSidebar", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Thinking...");
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 
-    respond(jsonResponse(200, { reply: "Done waiting.", board: initialData }));
+    respond(jsonResponse(200, { reply: "Done waiting.", board: null, version: 1 }));
     expect(await screen.findByText("Done waiting.")).toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });

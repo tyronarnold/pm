@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS boards (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
     data TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
@@ -28,6 +29,19 @@ CREATE TABLE IF NOT EXISTS boards (
 - `boards.user_id` is unique: one board per user for the MVP. Allowing several boards later means dropping that constraint and adding a `name` column.
 - `users` has no password column. Sign-in is hardcoded (`user` / `password`) for the MVP; a password hash column can be added when real accounts arrive.
 - Timestamps are UTC text (`YYYY-MM-DD HH:MM:SS`). `updated_at` is set on every save.
+- `boards.version` starts at 1 and goes up by one on every save. It is used for optimistic concurrency (see Saving below).
+
+## Saving
+
+Every save says which version it was based on, and only succeeds if the board is still at that version:
+
+```sql
+UPDATE boards SET data = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP
+WHERE user_id = (SELECT id FROM users WHERE username = ?) AND version = ?
+RETURNING version
+```
+
+If no row is updated, someone else (another tab, or the AI chat) saved first. `PUT /api/board` then returns `409` with the current `{version, board}`, so a stale save can never overwrite a newer board. The AI chat applies its operations to the latest saved board after the model replies, and saves with the same check.
 
 ## Board JSON
 
@@ -53,7 +67,7 @@ CREATE TABLE IF NOT EXISTS boards (
 ## Startup and first use
 
 1. On startup the backend creates the database file and tables if missing, and inserts the `user` row if missing (`INSERT OR IGNORE`).
-2. The first `GET /api/board` for a user with no board row inserts the default board (the five columns and eight sample cards from the current demo: Backlog, Discovery, In Progress, Review, Done) and returns it.
+2. The first `GET /api/board` for a user with no board row inserts the default board at version 1 (the five columns and eight sample cards from the current demo: Backlog, Discovery, In Progress, Review, Done) and returns it.
 3. After that, reads and writes go to that user's row.
 
-There are no migrations for the MVP. If the schema changes, delete the volume (`docker volume rm pm-data`) to start fresh.
+There is no migration framework. The one schema change so far (adding `boards.version`) is handled in `init_db`: if the column is missing it is added with `ALTER TABLE`, and existing boards keep their data and start at version 1. For larger changes, deleting the volume (`docker volume rm pm-data`) starts fresh, at the cost of all saved boards.

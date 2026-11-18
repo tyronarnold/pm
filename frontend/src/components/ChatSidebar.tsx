@@ -6,7 +6,7 @@ import { sendChat, type ChatMessage } from "@/lib/api";
 import type { BoardData } from "@/lib/kanban";
 
 type ChatSidebarProps = {
-  onBoardUpdate: (board: BoardData) => void;
+  onBoardUpdate: (board: BoardData, version: number) => void;
 };
 
 export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
@@ -35,9 +35,11 @@ export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
     setHasError(false);
     setIsSending(true);
     try {
-      const { reply, board } = await sendChat(message, history);
+      const { reply, board, version } = await sendChat(message, history);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
-      onBoardUpdate(board);
+      if (board) {
+        onBoardUpdate(board, version);
+      }
     } catch {
       setHasError(true);
     } finally {

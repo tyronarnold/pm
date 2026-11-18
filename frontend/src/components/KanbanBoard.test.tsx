@@ -7,18 +7,32 @@ const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-const savedBoards = (): BoardData[] =>
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+const puts = (): { version: number; board: BoardData }[] =>
   fetchMock.mock.calls
     .filter(([url, init]) => url === "/api/board" && init?.method === "PUT")
     .map(([, init]) => JSON.parse(init.body));
 
+const savedBoards = () => puts().map((put) => put.board);
+
 const lastSaved = () => savedBoards().at(-1)!;
 
 const renderBoard = () =>
-  render(<KanbanBoard initialBoard={initialData} onLogout={() => {}} />);
+  render(<KanbanBoard initialBoard={initialData} initialVersion={1} onLogout={() => {}} />);
+
+// Behaves like the backend: a save based on version n is stored as version n + 1.
+const fakeServer = async (url: string, init?: RequestInit) => {
+  if (url === "/api/board" && init?.method === "PUT") {
+    const body = JSON.parse(init.body as string);
+    return json({ version: body.version + 1, board: body.board });
+  }
+  return json({});
+};
 
 beforeEach(() => {
-  fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+  fetchMock = vi.fn(fakeServer);
   vi.stubGlobal("fetch", fetchMock);
 });
 
@@ -140,9 +154,7 @@ describe("KanbanBoard", () => {
       ),
       cards: { ...initialData.cards, "card-ai": { id: "card-ai", title: "From the AI", details: "" } },
     };
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ reply: "Added it.", board: aiBoard }), { status: 200 })
-    );
+    fetchMock.mockResolvedValueOnce(json({ reply: "Added it.", board: aiBoard, version: 7 }));
     renderBoard();
     await userEvent.type(screen.getByLabelText("Message"), "Add a card to Done");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -150,6 +162,51 @@ describe("KanbanBoard", () => {
     const done = await screen.findByTestId("column-col-done");
     expect(await within(done).findByText("From the AI")).toBeInTheDocument();
     expect(savedBoards()).toHaveLength(0);
+
+    // The next save is based on the version the chat returned.
+    await userEvent.click(screen.getByRole("button", { name: "Delete From the AI" }));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(puts()[0].version).toBe(7);
+  });
+
+  it("sends saves one at a time, each based on the version the last save returned", async () => {
+    let finishFirstSave: (response: Response) => void = () => {};
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (finishFirstSave = resolve)));
+    renderBoard();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete Align roadmap themes" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Gather customer signals" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete QA micro-interactions" }));
+    expect(puts()).toHaveLength(1);
+    expect(puts()[0].version).toBe(1);
+
+    finishFirstSave(json({ version: 2, board: puts()[0].board }));
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    expect(puts()[1].version).toBe(2);
+    expect(Object.keys(puts()[1].board.cards)).not.toContain("card-6");
+    expect(Object.keys(puts()[1].board.cards)).not.toContain("card-2");
+  });
+
+  it("loads the latest board when a save conflicts", async () => {
+    const serverBoard: BoardData = {
+      ...initialData,
+      cards: {
+        ...initialData.cards,
+        "card-1": { id: "card-1", title: "Changed in another tab", details: "" },
+      },
+    };
+    fetchMock.mockResolvedValueOnce(json({ detail: "conflict", version: 5, board: serverBoard }, 409));
+    renderBoard();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete Gather customer signals" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("changed somewhere else");
+    expect(screen.getByText("Changed in another tab")).toBeInTheDocument();
+    expect(screen.getByText("Gather customer signals")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete Gather customer signals" }));
+    await waitFor(() => expect(puts()).toHaveLength(2));
+    expect(puts()[1].version).toBe(5);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
   it("shows an error when the server cannot be reached", async () => {

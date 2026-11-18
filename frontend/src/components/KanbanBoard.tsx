@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -19,19 +19,60 @@ import { columnColors, createId, moveCard, type BoardData } from "@/lib/kanban";
 
 type KanbanBoardProps = {
   initialBoard: BoardData;
+  initialVersion: number;
   onLogout: () => void;
 };
 
-export const KanbanBoard = ({ initialBoard, onLogout }: KanbanBoardProps) => {
+type Notice = "save-failed" | "conflict" | null;
+
+export const KanbanBoard = ({ initialBoard, initialVersion, onLogout }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(initialBoard);
-  const [saveFailed, setSaveFailed] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const dndContextId = useId();
 
+  // Saving state lives in refs: it changes during async work and never affects rendering.
+  const version = useRef(initialVersion); // version of the last board the server confirmed
+  const pending = useRef<BoardData | null>(null); // latest board waiting to be saved
+  const saving = useRef(false);
+
+  // Replace the board with one from the server (after a conflict or an AI change).
+  // Any unsent local change was based on an older board, so it is dropped and the user is told.
+  const replaceBoard = (next: BoardData, nextVersion: number) => {
+    if (pending.current) {
+      setNotice("conflict");
+    }
+    pending.current = null;
+    version.current = Math.max(version.current, nextVersion);
+    setBoard(next);
+  };
+
+  // Saves run one at a time, each based on the version the previous save returned.
+  // Changes made while a save is in flight are combined: only the latest board is sent next.
+  const flush = async () => {
+    saving.current = true;
+    while (pending.current) {
+      const next = pending.current;
+      pending.current = null;
+      const result = await saveBoard(next, version.current);
+      if (result.status === "saved") {
+        version.current = Math.max(version.current, result.version);
+        setNotice(null);
+      } else if (result.status === "conflict") {
+        replaceBoard(result.board, result.version);
+        setNotice("conflict");
+      } else {
+        setNotice("save-failed");
+      }
+    }
+    saving.current = false;
+  };
+
   const persist = (next: BoardData) => {
-    saveBoard(next)
-      .catch(() => false)
-      .then((ok) => setSaveFailed(!ok));
+    pending.current = next;
+    if (!saving.current) {
+      void flush();
+    }
   };
 
   const update = (next: BoardData) => {
@@ -166,9 +207,15 @@ export const KanbanBoard = ({ initialBoard, onLogout }: KanbanBoardProps) => {
               </div>
             ))}
           </div>
-          {saveFailed && (
+          {notice === "save-failed" && (
             <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
               Could not save your changes. Check that the server is running and try again.
+            </p>
+          )}
+          {notice === "conflict" && (
+            <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
+              Your board was changed somewhere else, so the latest version has been loaded. Your
+              last change may need to be made again.
             </p>
           )}
         </header>
@@ -205,8 +252,8 @@ export const KanbanBoard = ({ initialBoard, onLogout }: KanbanBoardProps) => {
               </DragOverlay>
             </DndContext>
           </div>
-          {/* The backend has already saved the board the AI returns, so only update state. */}
-          <ChatSidebar onBoardUpdate={setBoard} />
+          {/* The backend has already saved the board the AI returns, so it is not saved again. */}
+          <ChatSidebar onBoardUpdate={replaceBoard} />
         </div>
       </main>
     </div>

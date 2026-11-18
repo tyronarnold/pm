@@ -10,7 +10,8 @@ export const signIn = async (page: Page, password = "password") => {
 
 // Replaces the signed-in user's saved board with the demo board.
 export const resetBoard = async (page: Page) => {
-  const response = await page.request.put("/api/board", { data: initialData });
+  const { version } = await (await page.request.get("/api/board")).json();
+  const response = await page.request.put("/api/board", { data: { version, board: initialData } });
   expect(response.ok()).toBe(true);
 };
 
