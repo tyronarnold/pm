@@ -9,7 +9,7 @@ Each part has a checklist (checked off as work is done), tests, and success crit
 - Database: SQLite. One row per user's board, holding the whole board as JSON (same `BoardData` shape the frontend uses).
 - AI board changes: the AI returns a list of operations (create / edit / move / delete card), applied by the backend. Not a whole-board replacement.
 - Chat history: kept in the browser only, sent with each chat request, lost on refresh.
-- Tests: backend tests run inside the Docker container. Frontend unit tests run locally with npm. Playwright e2e tests run locally against the running container. AI tests use faked responses, except a few tests that call OpenRouter for real: the backend tests marked `live` (2+2, create a card, create then move a card, delete a card; skipped without the API key) and the Playwright chat test.
+- Tests: backend tests run inside the Docker container. Frontend unit tests run locally with npm. Playwright e2e tests run locally against their own throwaway `pm-test` container on port 8001 (see Follow-ups). AI tests use faked responses, except a few tests that call OpenRouter for real: the backend tests marked `live` (2+2, create a card, create then move a card, delete a card; skipped without the API key) and the Playwright chat test.
 - App URL: http://localhost:8000. SQLite file lives in a named Docker volume so data survives restarts.
 - Look and feel (user decisions after the MVP, see Part 11): card colors per column and column styling from the user's reference image, a yellow left edge on card hover, #4C9BD2 header column chips, #BA001D Log out button, chat sidebar 25% smaller.
 - Source control: the code lives at https://github.com/tyronarnold/pm (public, remote `origin`); the original course repo `ed-donner/pm` is kept as remote `upstream`. Work is committed to `main`.
@@ -248,10 +248,12 @@ From the self-review in `docs/tutorial.md`, section 7:
   - AI calls: 30 second timeout with one retry; timeouts, connection and HTTP errors, cut-off replies and refusals become `AIError` with a user-facing message, returned as `502 {detail}` and shown as is in the chat sidebar
   - Skipped operations: `apply_operations` returns the skipped operations; the chat appends a note to the reply ("1 requested change could not be applied ..."), so the user and the AI (through the history) both know
   - Tests: pytest for timeout, connection error, refusal, the client's timeout settings, skipped notes; Vitest for load failure and retry, unreachable server, chat error messages; Playwright using `page.route` for a failed board load and a failed AI call
-- [ ] Run Playwright against a separate test container and volume, so e2e tests do not reset the real `user` board
+- [x] Run Playwright against a separate test container and volume, so e2e tests do not reset the real `user` board
+  - `frontend/tests/global-setup.ts` (Playwright `globalSetup`) builds the image, starts a `pm-test` container on port 8001 and removes it after the run (also removes a leftover one from an interrupted run). It uses no volume at all: each run starts with an empty database, which is simpler than a separate named volume and needs no cleanup
+  - Playwright's `baseURL` is http://127.0.0.1:8001; the real app on port 8000 no longer needs to be running for e2e tests
+  - Checked: after a full run the real board was byte-for-byte unchanged (same version), and no `pm-test` container was left behind
 - [ ] Move frontend board updates into pure functions or a reducer; generate TypeScript types from FastAPI's OpenAPI schema so the two sides cannot drift (and align the empty-details default)
 - [ ] Real sign-in: hashed passwords in `users`, session secret from an environment variable, `https_only` cookie, login rate limiting
 
 Notes for working on the project:
-- Until the test container exists, back up the `user` board before running `npm run test:e2e` and restore it afterwards (the e2e tests reset it)
 - On Windows, run Vitest from an uppercase `C:\` path (PowerShell or cmd); Git Bash's lowercase `c:\` loads Vitest twice and breaks the jest-dom matchers

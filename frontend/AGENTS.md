@@ -9,7 +9,7 @@ npm run dev          dev server on http://localhost:3000 (no backend, so sign-in
 npm run build        static export to out/
 npm run lint         eslint
 npm run test:unit    vitest (jsdom)
-npm run test:e2e     playwright against the running container on http://127.0.0.1:8000 (start it with scripts/start.*); resets the saved board of `user`; the chat test calls the real AI
+npm run test:e2e     playwright; builds the image and runs a throwaway `pm-test` container on http://127.0.0.1:8001 (needs Docker and the root .env); the chat test calls the real AI
 ```
 
 ## Code
@@ -49,7 +49,8 @@ Columns are fixed (no add or remove); only their titles change. Card order is th
 - `tests/auth.spec.ts`: Playwright e2e for login form, bad credentials, sign in, reload keeps session, log out, a board that fails to load once (via `page.route`) shows "Try again" and recovers, 401 from `/api/me`
 - `tests/helpers.ts`: `signIn(page)`, `resetBoard(page)` (reads the current version, then saves `initialData` as the board), `saved(page, action)` (waits for the board save an action triggers)
 - Playwright's `getByLabel` matches substrings case-insensitively, so use `{ exact: true }` for "Message" (otherwise it also matches the "Chat messages" log)
-- Playwright runs with `workers: 1` because every test shares the one saved board of `user`
+- `tests/global-setup.ts`: Playwright global setup. Builds the `pm` image from the current code, removes any leftover `pm-test` container, starts a new one on port 8001 (no volume, so each run starts with an empty database; `--env-file .env` for the live chat test), waits for `/api/health`, and removes the container after the run. The real `pm` container and its `pm-data` volume are never touched
+- Playwright runs with `workers: 1` because every test shares the one board of `user` in the test container
 - On Windows, run Vitest from a path with an uppercase drive letter (`C:\...`, which PowerShell and cmd give you). Git Bash's `/c/...` gives Node a lowercase `c:\`, Vitest is then loaded twice, and the global `expect` lacks the jest-dom matchers ("Invalid Chai property")
 - Next.js renders a hidden route announcer with `role="alert"`, so in e2e tests find messages by text, not by the alert role
 - Vitest setup: `src/test/setup.ts` imports `@testing-library/jest-dom/vitest`; `src/test/vitest.d.ts` references the Vitest globals and jest-dom matcher types

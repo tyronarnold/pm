@@ -803,10 +803,10 @@ docker run --rm --env-file .env pm uv run --no-sync pytest    # backend, includi
 cd frontend
 npm install
 npm run test:unit                                             # Vitest
-npm run test:e2e                                              # Playwright (needs the app running)
+npm run test:e2e                                              # Playwright (starts its own test container)
 ```
 
-Note: the Playwright tests reset the `user` board to the demo data. See suggestion 3 below.
+The Playwright tests start their own throwaway container on port 8001, so they never touch your board (this was suggestion 3 below, since implemented).
 
 ---
 
@@ -855,6 +855,8 @@ docker run -d --name pm-test -p 8001:8000 --env-file .env -v pm-test-data:/app/d
 ```
 
 Then point Playwright's `baseURL` at `http://127.0.0.1:8001`. Tests can reset that board freely, and they could even run in parallel if each test used its own user.
+
+> **Done:** a Playwright `globalSetup` (`frontend/tests/global-setup.ts`) now builds the image, starts a `pm-test` container on port 8001 and removes it after the run. It uses no volume at all, so every run starts with an empty database.
 
 ### 4. Board logic is spread across the component; types are defined twice
 

@@ -34,7 +34,7 @@ docker run --rm pm uv run --no-sync pytest
 
 Add `--env-file .env` after `--rm` to also run the tests that call OpenRouter (otherwise they are skipped). `pytest -m live` runs only those.
 
-Frontend (from `frontend/`, after `npm install`; e2e needs the app running, resets the board of `user`, and its chat test calls the real AI):
+Frontend (from `frontend/`, after `npm install`). The e2e tests build the image and run their own throwaway container on port 8001, so your board on port 8000 is never touched; the chat test calls the real AI:
 
 ```
 npm run test:unit
