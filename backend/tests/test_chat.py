@@ -76,6 +76,16 @@ def test_operations_update_and_save_board(signed_in, fake_ai):
     assert signed_in.get("/api/board").json() == body["board"]
 
 
+def test_delete_operation_is_saved(signed_in, fake_ai):
+    delete = Operation(
+        type="delete_card", card_id="card-6", column_id=None, title=None, details=None, position=None
+    )
+    fake_ai(reply="Deleted it.", operations=[delete])
+    body = signed_in.post("/api/chat", json={"message": "Delete the QA card"}).json()
+    assert "card-6" not in body["board"]["cards"]
+    assert "card-6" not in saved_board().cards
+
+
 def test_request_includes_board_history_and_message(signed_in, fake_ai):
     fake = fake_ai()
     history = [

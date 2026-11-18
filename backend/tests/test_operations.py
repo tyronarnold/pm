@@ -101,6 +101,24 @@ def test_temporary_id_matching_an_existing_card_does_not_overwrite_it():
     assert board.cards["card-1"] == DEFAULT_BOARD.cards["card-1"]
 
 
+def test_delete_card():
+    board = apply_operations(DEFAULT_BOARD, [op("delete_card", card_id="card-7")])
+    assert "card-7" not in board.cards
+    assert column(board, "col-done") == ["card-8"]
+    Board.model_validate(board.model_dump())
+
+
+def test_delete_card_created_in_the_same_list():
+    board = apply_operations(
+        DEFAULT_BOARD,
+        [
+            op("create_card", card_id="new-1", column_id="col-backlog", title="Oops"),
+            op("delete_card", card_id="new-1"),
+        ],
+    )
+    assert board == DEFAULT_BOARD
+
+
 def test_unknown_ids_and_empty_titles_are_skipped():
     operations = [
         op("create_card", column_id="col-nope", title="Lost"),
@@ -109,6 +127,7 @@ def test_unknown_ids_and_empty_titles_are_skipped():
         op("move_card", card_id="card-404", column_id="col-done"),
         op("move_card", card_id="card-1", column_id="col-nope"),
         op("edit_card", card_id="card-1", title=""),
+        op("delete_card", card_id="card-404"),
     ]
     assert apply_operations(DEFAULT_BOARD, operations) == DEFAULT_BOARD
 

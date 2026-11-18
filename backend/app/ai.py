@@ -20,6 +20,8 @@ To change the board, return operations. Allowed operations:
 can use it to edit or move the new card), column_id, title, details (may be empty), position (0 = top, null = bottom).
 - edit_card: card_id, plus the new title and/or details. Use null for a field that should not change.
 - move_card: card_id, column_id (the destination; may be the same column to reorder), position (0 = top, null = bottom).
+- delete_card: card_id. Only delete cards the user clearly asked you to delete; if it is unclear which card \
+they mean, ask instead of deleting.
 Set fields an operation does not use to null. Use the exact ids from the board. \
 Operations are applied in order. Return an empty list when no change is needed, \
 for example when the user only asks a question.

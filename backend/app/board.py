@@ -103,9 +103,10 @@ class Operation(BaseModel):
         position (null = end of column)
     edit_card: card_id, title and/or details (null = unchanged)
     move_card: card_id, column_id, position (null = end of column)
+    delete_card: card_id
     """
 
-    type: Literal["create_card", "edit_card", "move_card"]
+    type: Literal["create_card", "edit_card", "move_card", "delete_card"]
     card_id: str | None
     column_id: str | None
     title: str | None
@@ -118,6 +119,13 @@ def _insert(card_ids: list[str], card_id: str, position: int | None) -> None:
         card_ids.append(card_id)
     else:
         card_ids.insert(max(0, position), card_id)
+
+
+def _remove(board: Board, card_id: str) -> None:
+    """Take a card out of whichever column holds it."""
+    for column in board.columns:
+        if card_id in column.cardIds:
+            column.cardIds.remove(card_id)
 
 
 def apply_operations(board: Board, operations: list[Operation]) -> Board:
@@ -157,9 +165,13 @@ def apply_operations(board: Board, operations: list[Operation]) -> Board:
         elif op.type == "move_card":
             if card_id not in board.cards or op.column_id not in columns:
                 continue
-            for column in board.columns:
-                if card_id in column.cardIds:
-                    column.cardIds.remove(card_id)
+            _remove(board, card_id)
             _insert(columns[op.column_id].cardIds, card_id, op.position)
+
+        elif op.type == "delete_card":
+            if card_id not in board.cards:
+                continue
+            _remove(board, card_id)
+            del board.cards[card_id]
 
     return board

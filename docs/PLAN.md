@@ -7,7 +7,7 @@ Each part has a checklist (checked off as work is done), tests, and success crit
 - AI model: `anthropic/claude-haiku-5.5` via OpenRouter, reasoning effort `low`. The OpenRouter call uses the `openai` Python SDK pointed at `https://openrouter.ai/api/v1`.
 - Sign-in: backend checks the hardcoded credentials and sets a signed session cookie (Starlette `SessionMiddleware`). All `/api` routes except login require it.
 - Database: SQLite. One row per user's board, holding the whole board as JSON (same `BoardData` shape the frontend uses).
-- AI board changes: the AI returns a list of operations (create / edit / move card), applied by the backend. Not a whole-board replacement.
+- AI board changes: the AI returns a list of operations (create / edit / move / delete card), applied by the backend. Not a whole-board replacement.
 - Chat history: kept in the browser only, sent with each chat request, lost on refresh.
 - Tests: backend tests run inside the Docker container. Frontend unit tests run locally with npm. Playwright e2e tests run locally against the running container. Only the "2+2" connectivity test calls OpenRouter for real; all other AI tests use faked responses.
 - App URL: http://localhost:8000. SQLite file lives in a named Docker volume so data survives restarts.
@@ -191,6 +191,7 @@ Success criteria: chat requests return a reply and, when the AI decides to, a co
 - [x] History kept in React state and sent with each message
 - [x] When the response includes a board, replace the board state so the UI refreshes immediately
 - [x] Error message in the sidebar if the chat request fails
+- [x] Added after the MVP: the AI can also delete cards (`delete_card` operation); the system prompt tells it to delete only cards the user clearly asked for and to ask when unclear
 - [x] Fix found by the e2e test: the AI could not move or edit a card it created in the same reply (it had no id yet). `create_card` now takes a temporary `card_id` that later operations in the same reply can use; the backend maps it to the generated id
 
 Tests:
