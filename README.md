@@ -2,6 +2,8 @@
 
 Project management app: Next.js frontend, FastAPI backend, SQLite, AI chat via OpenRouter. Runs in one Docker container.
 
+![Kanban Studio board with the AI Assistant sidebar](docs/screenshot.png)
+
 Requires Docker and a `.env` file in the repo root containing `OPENROUTER_API_KEY`.
 
 ## Run
