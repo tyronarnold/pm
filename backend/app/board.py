@@ -1,5 +1,5 @@
 import uuid
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -128,8 +128,13 @@ def _remove(board: Board, card_id: str) -> None:
             column.cardIds.remove(card_id)
 
 
-def apply_operations(board: Board, operations: list[Operation]) -> Board:
-    """Return a new board with the operations applied in order.
+class Applied(NamedTuple):
+    board: Board
+    skipped: list[Operation]
+
+
+def apply_operations(board: Board, operations: list[Operation]) -> Applied:
+    """Return a new board with the operations applied in order, plus the skipped ones.
 
     New cards always get a generated id; the temporary card_id given in
     create_card is mapped to it for the rest of the list. Operations that
@@ -139,10 +144,12 @@ def apply_operations(board: Board, operations: list[Operation]) -> Board:
     board = board.model_copy(deep=True)
     columns = {column.id: column for column in board.columns}
     new_ids: dict[str, str] = {}
+    skipped: list[Operation] = []
 
     for op in operations:
         if op.type == "create_card":
             if op.column_id not in columns or not op.title:
+                skipped.append(op)
                 continue
             card_id = f"card-{uuid.uuid4().hex[:12]}"
             if op.card_id:
@@ -155,7 +162,8 @@ def apply_operations(board: Board, operations: list[Operation]) -> Board:
 
         if op.type == "edit_card":
             card = board.cards.get(card_id)
-            if card is None:
+            if card is None or (not op.title and op.details is None):
+                skipped.append(op)
                 continue
             if op.title:
                 card.title = op.title
@@ -164,14 +172,16 @@ def apply_operations(board: Board, operations: list[Operation]) -> Board:
 
         elif op.type == "move_card":
             if card_id not in board.cards or op.column_id not in columns:
+                skipped.append(op)
                 continue
             _remove(board, card_id)
             _insert(columns[op.column_id].cardIds, card_id, op.position)
 
         elif op.type == "delete_card":
             if card_id not in board.cards:
+                skipped.append(op)
                 continue
             _remove(board, card_id)
             del board.cards[card_id]
 
-    return board
+    return Applied(board, skipped)

@@ -642,6 +642,8 @@ def apply_operations(board: Board, operations: list[Operation]) -> Board:
     return board
 ```
 
+> **Update:** the current version also collects the operations it skips and returns them with the board (`Applied(board, skipped)`), so the chat can tell the user when a change could not be applied. See self-review suggestion 2.
+
 Key ideas:
 
 - `model_copy(deep=True)` works on a copy, the Python version of immutable updates.
@@ -840,6 +842,8 @@ The happy path is solid, but several failures fall through:
 - Skipped operations are silent. If the AI refers to a card that does not exist, the user sees "Done!" but nothing changes.
 
 Improvements: show a retry button when the board fails to load; set a timeout on the OpenAI client (`OpenAI(..., timeout=30)`) and return a clear `502` with a message when the AI call fails; and have `apply_operations` return how many operations were skipped so the reply can say so.
+
+> **Done:** implemented as described. The page shows "Try again" when loading fails, AI failures become a `502` with a message the sidebar shows as is, and skipped AI changes are noted in the reply.
 
 ### 3. The browser tests use the real user's data
 

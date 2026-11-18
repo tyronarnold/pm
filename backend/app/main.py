@@ -111,19 +111,34 @@ class ChatResponse(BaseModel):
     version: int
 
 
-@app.post("/api/chat")
+def skipped_note(count: int) -> str:
+    """Told to the user, and to the AI through the chat history, when changes could not be applied."""
+    changes = "1 requested change" if count == 1 else f"{count} requested changes"
+    return (
+        f"\n\n(Note: {changes} could not be applied, because they referred to a card or column"
+        " that does not exist or had no title.)"
+    )
+
+
+@app.post("/api/chat", responses={502: {"description": "The AI call failed; `detail` is a message for the user"}})
 def chat(request: ChatRequest, username: str = Depends(current_user)) -> ChatResponse:
-    result = ai.chat(load_board(username).board, request.history, request.message)
+    try:
+        result = ai.chat(load_board(username).board, request.history, request.message)
+    except ai.AIError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
     # The user may have saved changes while the AI was working, so apply its
     # operations to the latest saved board rather than the one it was shown.
     latest = load_board(username)
-    updated = apply_operations(latest.board, result.operations)
+    updated, skipped = apply_operations(latest.board, result.operations)
+    reply = result.reply + (skipped_note(len(skipped)) if skipped else "")
     if updated == latest.board:
-        return ChatResponse(reply=result.reply, board=None, version=latest.version)
+        return ChatResponse(reply=reply, board=None, version=latest.version)
     version = db.update_board(username, updated.model_dump_json(), latest.version)
     if version is None:
-        raise HTTPException(status_code=409, detail="Board changed while the AI was working; try again")
-    return ChatResponse(reply=result.reply, board=updated, version=version)
+        raise HTTPException(
+            status_code=409, detail="Your board changed while the AI was working. Please try again."
+        )
+    return ChatResponse(reply=reply, board=updated, version=version)
 
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

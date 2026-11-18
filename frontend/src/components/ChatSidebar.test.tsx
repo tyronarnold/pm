@@ -104,6 +104,26 @@ describe("ChatSidebar", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("shows the server's message when the AI call fails", async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(502, { detail: "The AI took too long to reply. Please try again." })
+    );
+    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    await send("Hello");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The AI took too long to reply. Please try again."
+    );
+  });
+
+  it("shows a friendly message when the server cannot be reached", async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    await send("Hello");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The assistant could not be reached. Please try again."
+    );
+  });
+
   it("can be hidden and shown again, keeping the conversation", async () => {
     render(<ChatSidebar onBoardUpdate={() => {}} />);
     await send("Remember me");

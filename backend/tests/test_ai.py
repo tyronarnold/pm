@@ -28,13 +28,13 @@ def test_live_chat_creates_card():
 
 def test_live_chat_deletes_card():
     result = ai.chat(DEFAULT_BOARD, [], "Delete the QA micro-interactions card.")
-    board = apply_operations(DEFAULT_BOARD, result.operations)
+    board, _ = apply_operations(DEFAULT_BOARD, result.operations)
     assert "card-6" not in board.cards
     assert len(board.cards) == len(DEFAULT_BOARD.cards) - 1
 
 
 def test_live_chat_creates_then_moves_card():
     result = ai.chat(DEFAULT_BOARD, [], 'Create a card titled "Ship it" in Backlog, then move it to Done.')
-    board = apply_operations(DEFAULT_BOARD, result.operations)
+    board, _ = apply_operations(DEFAULT_BOARD, result.operations)
     done = next(c for c in board.columns if c.id == "col-done")
     assert "Ship it" in [board.cards[card_id].title for card_id in done.cardIds]

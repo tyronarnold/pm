@@ -1,6 +1,8 @@
 import json
 from types import SimpleNamespace
 
+import httpx2
+import openai
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,27 +14,34 @@ from app.main import app
 class FakeClient:
     """Stands in for the OpenAI client: records each request and returns a fixed result."""
 
-    def __init__(self, result: ai.ChatResult, while_thinking=None):
+    def __init__(self, result: ai.ChatResult | None, while_thinking=None, error=None):
         self.requests = []
         self.result = result
         self.while_thinking = while_thinking
+        self.error = error
         self.chat = SimpleNamespace(completions=SimpleNamespace(parse=self.parse))
 
     def parse(self, **kwargs):
         self.requests.append(kwargs)
         if self.while_thinking:
             self.while_thinking()
+        if self.error:
+            raise self.error
         return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=self.result))])
 
 
 @pytest.fixture
 def fake_ai(monkeypatch):
-    def install(reply="Done.", operations=(), while_thinking=None):
-        fake = FakeClient(ai.ChatResult(reply=reply, operations=list(operations)), while_thinking)
+    def install(reply="Done.", operations=(), while_thinking=None, error=None, refuse=False):
+        result = None if refuse else ai.ChatResult(reply=reply, operations=list(operations))
+        fake = FakeClient(result, while_thinking, error)
         monkeypatch.setattr(ai, "client", lambda: fake)
         return fake
 
     return install
+
+
+REQUEST = httpx2.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
 
 
 @pytest.fixture
@@ -110,6 +119,53 @@ def test_delete_operation_is_saved(signed_in, fake_ai):
     body = signed_in.post("/api/chat", json={"message": "Delete the QA card"}).json()
     assert "card-6" not in body["board"]["cards"]
     assert "card-6" not in saved_board().cards
+
+
+def test_skipped_operations_are_noted_in_the_reply(signed_in, fake_ai):
+    fake_ai(reply="Moved both.", operations=[move("card-1", "col-done"), move("card-404", "col-done")])
+    body = signed_in.post("/api/chat", json={"message": "Move them"}).json()
+    assert body["reply"].startswith("Moved both.")
+    assert "1 requested change could not be applied" in body["reply"]
+    assert "card-1" in next(c for c in body["board"]["columns"] if c["id"] == "col-done")["cardIds"]
+
+
+def test_note_counts_several_skipped_operations_when_nothing_changed(signed_in, fake_ai):
+    fake_ai(reply="Done.", operations=[move("card-404", "col-done"), move("card-1", "col-nope")])
+    body = signed_in.post("/api/chat", json={"message": "Move them"}).json()
+    assert "2 requested changes could not be applied" in body["reply"]
+    assert body["board"] is None
+    assert saved_version() == 1
+
+
+@pytest.mark.parametrize(
+    ("error", "message"),
+    [
+        (openai.APITimeoutError(request=REQUEST), "The AI took too long to reply. Please try again."),
+        (openai.APIConnectionError(request=REQUEST), "The AI service could not be reached. Please try again."),
+    ],
+    ids=["timeout", "connection"],
+)
+def test_ai_failures_return_502_with_a_message_for_the_user(signed_in, fake_ai, error, message):
+    fake_ai(error=error)
+    response = signed_in.post("/api/chat", json={"message": "Hello"})
+    assert response.status_code == 502
+    assert response.json() == {"detail": message}
+    assert saved_version() == 1
+
+
+def test_ai_refusal_returns_502_with_a_message_for_the_user(signed_in, fake_ai):
+    fake_ai(refuse=True)
+    response = signed_in.post("/api/chat", json={"message": "Hello"})
+    assert response.status_code == 502
+    assert response.json() == {"detail": "The AI could not answer that. Please rephrase and try again."}
+
+
+def test_ai_client_has_a_timeout():
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("OPENROUTER_API_KEY", "test-key")
+        client = ai.client()
+    assert client.timeout == ai.TIMEOUT_SECONDS
+    assert client.max_retries == 1
 
 
 def test_request_includes_board_history_and_message(signed_in, fake_ai):

@@ -11,7 +11,7 @@ def column(board: Board, column_id: str) -> list[str]:
 
 
 def test_create_card_at_end_and_at_position():
-    board = apply_operations(
+    board, _ = apply_operations(
         DEFAULT_BOARD,
         [
             op("create_card", column_id="col-review", title="Last", details="d"),
@@ -28,7 +28,7 @@ def test_create_card_at_end_and_at_position():
 
 
 def test_edit_title_and_details():
-    board = apply_operations(
+    board, _ = apply_operations(
         DEFAULT_BOARD,
         [
             op("edit_card", card_id="card-1", title="New title"),
@@ -42,20 +42,20 @@ def test_edit_title_and_details():
 
 
 def test_move_across_columns():
-    board = apply_operations(DEFAULT_BOARD, [op("move_card", card_id="card-1", column_id="col-done")])
+    board, _ = apply_operations(DEFAULT_BOARD, [op("move_card", card_id="card-1", column_id="col-done")])
     assert column(board, "col-backlog") == ["card-2"]
     assert column(board, "col-done") == ["card-7", "card-8", "card-1"]
 
 
 def test_move_within_column_to_position():
-    board = apply_operations(
+    board, _ = apply_operations(
         DEFAULT_BOARD, [op("move_card", card_id="card-8", column_id="col-done", position=0)]
     )
     assert column(board, "col-done") == ["card-8", "card-7"]
 
 
 def test_several_operations_in_order():
-    board = apply_operations(
+    board, skipped = apply_operations(
         DEFAULT_BOARD,
         [
             op("create_card", column_id="col-backlog", title="Plan"),
@@ -63,6 +63,7 @@ def test_several_operations_in_order():
             op("edit_card", card_id="card-3", title="Analytics view, in progress"),
         ],
     )
+    assert skipped == []
     assert len(column(board, "col-backlog")) == 3
     assert column(board, "col-discovery") == []
     assert column(board, "col-progress") == ["card-4", "card-3", "card-5"]
@@ -71,7 +72,7 @@ def test_several_operations_in_order():
 
 
 def test_later_operations_can_use_a_new_cards_temporary_id():
-    board = apply_operations(
+    board, _ = apply_operations(
         DEFAULT_BOARD,
         [
             op("create_card", card_id="new-1", column_id="col-backlog", title="Fresh"),
@@ -88,7 +89,7 @@ def test_later_operations_can_use_a_new_cards_temporary_id():
 
 
 def test_temporary_id_matching_an_existing_card_does_not_overwrite_it():
-    board = apply_operations(
+    board, _ = apply_operations(
         DEFAULT_BOARD,
         [
             op("create_card", card_id="card-1", column_id="col-review", title="Fresh"),
@@ -102,14 +103,14 @@ def test_temporary_id_matching_an_existing_card_does_not_overwrite_it():
 
 
 def test_delete_card():
-    board = apply_operations(DEFAULT_BOARD, [op("delete_card", card_id="card-7")])
+    board, _ = apply_operations(DEFAULT_BOARD, [op("delete_card", card_id="card-7")])
     assert "card-7" not in board.cards
     assert column(board, "col-done") == ["card-8"]
     Board.model_validate(board.model_dump())
 
 
 def test_delete_card_created_in_the_same_list():
-    board = apply_operations(
+    board, _ = apply_operations(
         DEFAULT_BOARD,
         [
             op("create_card", card_id="new-1", column_id="col-backlog", title="Oops"),
@@ -129,7 +130,18 @@ def test_unknown_ids_and_empty_titles_are_skipped():
         op("edit_card", card_id="card-1", title=""),
         op("delete_card", card_id="card-404"),
     ]
-    assert apply_operations(DEFAULT_BOARD, operations) == DEFAULT_BOARD
+    board, skipped = apply_operations(DEFAULT_BOARD, operations)
+    assert board == DEFAULT_BOARD
+    assert skipped == operations
+
+
+def test_only_the_invalid_operations_are_reported_as_skipped():
+    ghost = op("move_card", card_id="card-404", column_id="col-done")
+    board, skipped = apply_operations(
+        DEFAULT_BOARD, [op("delete_card", card_id="card-7"), ghost]
+    )
+    assert "card-7" not in board.cards
+    assert skipped == [ghost]
 
 
 def test_input_board_is_not_changed():

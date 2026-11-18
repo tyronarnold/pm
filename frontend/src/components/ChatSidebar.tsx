@@ -13,7 +13,7 @@ export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [hasError, setHasError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -32,7 +32,7 @@ export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
     const history = messages;
     setMessages([...history, { role: "user", content: message }]);
     setInput("");
-    setHasError(false);
+    setError(null);
     setIsSending(true);
     try {
       const { reply, board, version } = await sendChat(message, history);
@@ -40,8 +40,9 @@ export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
       if (board) {
         onBoardUpdate(board, version);
       }
-    } catch {
-      setHasError(true);
+    } catch (failure) {
+      // sendChat's errors carry a message written for the user.
+      setError((failure as Error).message);
     } finally {
       setIsSending(false);
     }
@@ -116,9 +117,9 @@ export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
         )}
       </div>
 
-      {hasError && (
+      {error && (
         <p role="alert" className="mt-3 text-sm font-semibold text-[var(--secondary-purple)]">
-          The assistant could not be reached. Please try again.
+          {error}
         </p>
       )}
 

@@ -65,11 +65,14 @@ describe("Home", () => {
   });
 
   it("signs in with valid credentials", async () => {
-    const fetchMock = mockFetch((url) =>
-      url === "/api/login"
-        ? jsonResponse(200, { username: "user" })
-        : jsonResponse(401, {})
-    );
+    let signedIn = false;
+    const fetchMock = mockFetch((url) => {
+      if (url === "/api/login") {
+        signedIn = true;
+        return jsonResponse(200, { username: "user" });
+      }
+      return signedIn ? jsonResponse(200, { username: "user" }) : jsonResponse(401, {});
+    });
     render(<Home />);
     await signIn("user", "password");
 
@@ -90,6 +93,36 @@ describe("Home", () => {
       "Invalid username or password."
     );
     expect(screen.queryAllByTestId(/column-/)).toHaveLength(0);
+  });
+
+  it("shows an error with a retry when the board cannot be loaded", async () => {
+    let boardAvailable = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/board") {
+          return boardAvailable
+            ? jsonResponse(200, { version: 1, board: initialData })
+            : jsonResponse(500, {});
+        }
+        return jsonResponse(200, { username: "user" });
+      })
+    );
+    render(<Home />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your board.");
+    expect(screen.queryAllByTestId(/column-/)).toHaveLength(0);
+
+    boardAvailable = true;
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findAllByTestId(/column-/)).toHaveLength(5);
+  });
+
+  it("shows the same error when the server cannot be reached at all", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
+    render(<Home />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your board.");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("logs out back to the login form", async () => {

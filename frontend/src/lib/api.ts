@@ -25,25 +25,38 @@ export const logout = async () => {
 // The version goes up by one on every save; saves must say which version they are based on.
 export type VersionedBoard = { version: number; board: BoardData };
 
+// Throws if the board could not be loaded.
 export const getBoard = async (): Promise<VersionedBoard> => {
   const response = await fetch("/api/board");
+  if (!response.ok) {
+    throw new Error(`Loading the board failed with ${response.status}`);
+  }
   return response.json();
 };
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
-// `board` is null when the AI made no changes.
+const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again.";
+
+// `board` is null when the AI made no changes. On failure, throws an Error whose
+// message can be shown to the user (the server's `detail` when it sends one).
 export const sendChat = async (
   message: string,
   history: ChatMessage[]
 ): Promise<{ reply: string; board: BoardData | null; version: number }> => {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, history }),
-  });
+  let response: Response;
+  try {
+    response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, history }),
+    });
+  } catch {
+    throw new Error(CHAT_UNAVAILABLE);
+  }
   if (!response.ok) {
-    throw new Error(`Chat request failed with ${response.status}`);
+    const body = await response.json().catch(() => ({}));
+    throw new Error(typeof body.detail === "string" ? body.detail : CHAT_UNAVAILABLE);
   }
   return response.json();
 };

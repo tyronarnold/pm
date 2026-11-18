@@ -243,7 +243,11 @@ From the self-review in `docs/tutorial.md`, section 7:
   - Backend: `boards.version` column (added to existing databases at startup, keeping their data); `GET /api/board` returns `{version, board}`; `PUT /api/board` takes `{version, board}` and returns `409` with the current board when the version is stale; the chat applies the AI's operations to the latest saved board after the model replies, and returns `board: null` when nothing changed
   - Frontend: saves are queued and sent one at a time with the last confirmed version; a `409` loads the server's board and shows "Your board was changed somewhere else..."; boards returned by the chat replace the local board and its version
   - Tests: pytest for versions, stale saves, upgrading an older database, and the AI applying its changes on top of a save made while it was working; Vitest for sequential saves, conflicts and chat versions; Playwright for two tabs editing the same board
-- [ ] Handle failures at the edges: board load error with retry, a timeout and clear error for AI calls, report skipped AI operations
+- [x] Handle failures at the edges: board load error with retry, a timeout and clear error for AI calls, report skipped AI operations
+  - Board load: `page.tsx` shows "Could not load your board..." with a "Try again" button when the sign-in check or board load fails (server error or unreachable), instead of hanging on "Loading board..."
+  - AI calls: 30 second timeout with one retry; timeouts, connection and HTTP errors, cut-off replies and refusals become `AIError` with a user-facing message, returned as `502 {detail}` and shown as is in the chat sidebar
+  - Skipped operations: `apply_operations` returns the skipped operations; the chat appends a note to the reply ("1 requested change could not be applied ..."), so the user and the AI (through the history) both know
+  - Tests: pytest for timeout, connection error, refusal, the client's timeout settings, skipped notes; Vitest for load failure and retry, unreachable server, chat error messages; Playwright using `page.route` for a failed board load and a failed AI call
 - [ ] Run Playwright against a separate test container and volume, so e2e tests do not reset the real `user` board
 - [ ] Move frontend board updates into pure functions or a reducer; generate TypeScript types from FastAPI's OpenAPI schema so the two sides cannot drift (and align the empty-details default)
 - [ ] Real sign-in: hashed passwords in `users`, session secret from an environment variable, `https_only` cookie, login rate limiting

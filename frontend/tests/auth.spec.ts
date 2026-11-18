@@ -29,6 +29,21 @@ test("signs in, stays signed in on reload, and logs out", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
 });
 
+test("offers a retry when the board fails to load", async ({ page }) => {
+  let failBoardLoad = true;
+  await page.route("**/api/board", (route) =>
+    failBoardLoad && route.request().method() === "GET"
+      ? route.fulfill({ status: 500, body: "{}" })
+      : route.continue()
+  );
+  await signIn(page);
+  await expect(page.getByText("Could not load your board.")).toBeVisible();
+
+  failBoardLoad = false;
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.locator(columns)).toHaveCount(5);
+});
+
 test("protected API returns 401 when signed out", async ({ request }) => {
   const response = await request.get("/api/me");
   expect(response.status()).toBe(401);

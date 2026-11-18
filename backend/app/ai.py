@@ -1,13 +1,18 @@
+import logging
 import os
 from typing import Literal
 
+import openai
 from openai import OpenAI
 from pydantic import BaseModel
 
 from app.board import Board, Operation
 
+logger = logging.getLogger(__name__)
+
 MODEL = "anthropic/claude-haiku-5.5"
 REASONING = {"reasoning": {"effort": "low"}}
+TIMEOUT_SECONDS = 30  # per attempt; the SDK retries once, so a failing call gives up after about a minute
 
 SYSTEM_PROMPT = """You are the assistant inside a Kanban project management app. \
 You help the user plan and manage the cards on their board.
@@ -40,10 +45,16 @@ class ChatResult(BaseModel):
     operations: list[Operation]
 
 
+class AIError(Exception):
+    """The AI call failed. The message is written for the user."""
+
+
 def client() -> OpenAI:
     return OpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=os.environ["OPENROUTER_API_KEY"],
+        timeout=TIMEOUT_SECONDS,
+        max_retries=1,
     )
 
 
@@ -64,10 +75,22 @@ def build_messages(board: Board, history: list[ChatMessage], message: str) -> li
 
 
 def chat(board: Board, history: list[ChatMessage], message: str) -> ChatResult:
-    response = client().chat.completions.parse(
-        model=MODEL,
-        messages=build_messages(board, history, message),
-        response_format=ChatResult,
-        extra_body=REASONING,
-    )
-    return response.choices[0].message.parsed
+    """Ask the AI about the board. Raises AIError with a user-facing message on failure."""
+    try:
+        response = client().chat.completions.parse(
+            model=MODEL,
+            messages=build_messages(board, history, message),
+            response_format=ChatResult,
+            extra_body=REASONING,
+        )
+    except openai.APITimeoutError as error:
+        logger.warning("AI call timed out", exc_info=True)
+        raise AIError("The AI took too long to reply. Please try again.") from error
+    except openai.OpenAIError as error:
+        # Connection and HTTP errors, and replies cut off by length or a content filter.
+        logger.warning("AI call failed", exc_info=True)
+        raise AIError("The AI service could not be reached. Please try again.") from error
+    result = response.choices[0].message.parsed
+    if result is None:  # the model refused
+        raise AIError("The AI could not answer that. Please rephrase and try again.")
+    return result
