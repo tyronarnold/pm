@@ -52,6 +52,8 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
       done: done.length,
       overdue: Object.values(board.cards).filter((card) => !done.includes(card.id) && isOverdue(card, localToday()))
         .length,
+      mine: Object.values(board.cards).filter((card) => !done.includes(card.id) && card.assignee === state.user)
+        .length,
     };
   };
 
@@ -139,7 +141,14 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
     }
     if (url === "/api/boards") {
       if (method === "POST") {
-        const created = { id: state.nextId++, name: body.name, version: 1, board: emptyBoard, owner: state.user };
+        const created = {
+          id: state.nextId++,
+          name: body.name,
+          version: 1,
+          board: emptyBoard,
+          owner: state.user!,
+          members: [],
+        };
         state.boards.push(created);
         return json(created, 201);
       }
@@ -180,7 +189,7 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
       return new Response(null, { status: 204 });
     }
     if (method === "GET") {
-      return json({ ...stored, owner: ownerOf(stored) });
+      return json({ ...stored, owner: ownerOf(stored), members: membersOf(stored) });
     }
     if (method === "PATCH") {
       if (!isOwner) return forbidden();

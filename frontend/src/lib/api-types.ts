@@ -347,6 +347,8 @@ export interface components {
             name: string;
             /** Owner */
             owner: string;
+            /** Members */
+            members: string[];
             /** Version */
             version: number;
             board: components["schemas"]["Board"];
@@ -372,6 +374,8 @@ export interface components {
             done: number;
             /** Overdue */
             overdue: number;
+            /** Mine */
+            mine: number;
         };
         /**
          * Card
@@ -393,6 +397,8 @@ export interface components {
              * @default []
              */
             labels: string[];
+            /** Assignee */
+            assignee?: string | null;
         };
         /** ChatMessage */
         ChatMessage: {

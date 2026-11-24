@@ -81,3 +81,22 @@ test("sharing with an unknown user shows why it failed", async ({ page }) => {
   await panel.getByRole("button", { name: "Share", exact: true }).click();
   await expect(panel.getByText('There is no user called "no-such-user-here".')).toBeVisible();
 });
+
+test("the owner assigns a card to a member, who finds it under their name", async ({ browser }) => {
+  const { owner, member, memberName } = await twoUsers(browser);
+  await shareWith(owner, memberName);
+
+  const card = owner.getByTestId("card-card-1");
+  await card.getByRole("button", { name: "Edit Align roadmap themes", exact: true }).click();
+  await card.getByLabel("Assignee").selectOption(memberName);
+  await saved(owner, () => card.getByRole("button", { name: "Save" }).click());
+  await expect(card.getByLabel(`Assigned to ${memberName}`)).toBeVisible();
+
+  await member.goto(owner.url());
+  await member.getByLabel("Filter by assignee").selectOption({ label: `${memberName} (me)` });
+  await expect(member.locator('[data-testid^="card-"]')).toHaveCount(1);
+  await expect(member.getByTestId("card-card-1")).toBeVisible();
+
+  await member.getByRole("button", { name: "Overview" }).click();
+  await expect(member.getByRole("region", { name: "Overview" }).getByText("1 assigned to you")).toBeVisible();
+});

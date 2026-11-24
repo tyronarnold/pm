@@ -12,6 +12,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { BoardFilters } from "@/components/BoardFilters";
+import { BoardPeopleContext } from "@/components/BoardPeople";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
@@ -42,11 +43,13 @@ type KanbanBoardProps = {
   boardId: number;
   initialBoard: BoardData;
   initialVersion: number;
+  people: string[]; // who can be assigned: the owner, then the members
+  username: string; // the signed-in user
 };
 
 type Notice = "save-failed" | "conflict" | null;
 
-export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoardProps) => {
+export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, username }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(initialBoard);
   const [notice, setNotice] = useState<Notice>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -155,81 +158,83 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <ul aria-label="Columns" className="flex flex-wrap items-center gap-4">
-        {board.columns.map((column) => (
-          <li
-            key={column.id}
-            className="flex items-center gap-2 rounded-full bg-[var(--nav-chip)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
-          >
-            <span className="h-2 w-2 rounded-full bg-[var(--accent-yellow)]" />
-            {column.title}
-          </li>
-        ))}
-      </ul>
-      <BoardFilters filters={filters} labels={boardLabels(board)} onChange={setFilters} />
-      {notice === "save-failed" && (
-        <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
-          Could not save your changes. Check that the server is running and try again.
-        </p>
-      )}
-      {notice === "conflict" && (
-        <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
-          Your board was changed somewhere else, so the latest version has been loaded. Your
-          last change may need to be made again.
-        </p>
-      )}
+    <BoardPeopleContext.Provider value={{ people, username }}>
+      <div className="flex flex-col gap-6">
+        <ul aria-label="Columns" className="flex flex-wrap items-center gap-4">
+          {board.columns.map((column) => (
+            <li
+              key={column.id}
+              className="flex items-center gap-2 rounded-full bg-[var(--nav-chip)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
+            >
+              <span className="h-2 w-2 rounded-full bg-[var(--accent-yellow)]" />
+              {column.title}
+            </li>
+          ))}
+        </ul>
+        <BoardFilters filters={filters} labels={boardLabels(board)} onChange={setFilters} />
+        {notice === "save-failed" && (
+          <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
+            Could not save your changes. Check that the server is running and try again.
+          </p>
+        )}
+        {notice === "conflict" && (
+          <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
+            Your board was changed somewhere else, so the latest version has been loaded. Your
+            last change may need to be made again.
+          </p>
+        )}
 
-      <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-start">
-        <div className="min-w-0 flex-1">
-          <DndContext
-            id={dndContextId}
-            sensors={sensors}
-            collisionDetection={closestCorners}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            {/* Columns share the width; past what fits, the row scrolls sideways. */}
-            <section className="flex flex-col gap-6 lg:flex-row lg:overflow-x-auto lg:pb-4">
-              {board.columns.map((column, index) => (
-                <KanbanColumn
-                  key={column.id}
-                  column={column}
-                  cards={column.cardIds
-                    .map((cardId) => board.cards[cardId])
-                    .filter((card) => matchesFilters(card, filters))}
-                  filtering={hasFilters(filters)}
-                  color={columnColor(index)}
-                  isFirst={index === 0}
-                  isLast={index === board.columns.length - 1}
-                  today={today}
-                  onRename={handleRenameColumn}
-                  onRenameDone={() => persist(board)}
-                  onAddCard={handleAddCard}
-                  onDeleteCard={handleDeleteCard}
-                  onEditCard={handleEditCard}
-                  onMove={handleMoveColumn}
-                  onDelete={handleDeleteColumn}
-                />
-              ))}
-              <NewColumnForm onAdd={handleAddColumn} />
-            </section>
-            <DragOverlay>
-              {activeCard && activeIndex !== -1 ? (
-                <div className="w-[260px]">
-                  <KanbanCardPreview
-                    card={activeCard}
-                    color={columnColor(activeIndex)}
-                    overdue={activeIndex !== board.columns.length - 1 && isOverdue(activeCard, today)}
+        <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-start">
+          <div className="min-w-0 flex-1">
+            <DndContext
+              id={dndContextId}
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              {/* Columns share the width; past what fits, the row scrolls sideways. */}
+              <section className="flex flex-col gap-6 lg:flex-row lg:overflow-x-auto lg:pb-4">
+                {board.columns.map((column, index) => (
+                  <KanbanColumn
+                    key={column.id}
+                    column={column}
+                    cards={column.cardIds
+                      .map((cardId) => board.cards[cardId])
+                      .filter((card) => matchesFilters(card, filters))}
+                    filtering={hasFilters(filters)}
+                    color={columnColor(index)}
+                    isFirst={index === 0}
+                    isLast={index === board.columns.length - 1}
+                    today={today}
+                    onRename={handleRenameColumn}
+                    onRenameDone={() => persist(board)}
+                    onAddCard={handleAddCard}
+                    onDeleteCard={handleDeleteCard}
+                    onEditCard={handleEditCard}
+                    onMove={handleMoveColumn}
+                    onDelete={handleDeleteColumn}
                   />
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+                ))}
+                <NewColumnForm onAdd={handleAddColumn} />
+              </section>
+              <DragOverlay>
+                {activeCard && activeIndex !== -1 ? (
+                  <div className="w-[260px]">
+                    <KanbanCardPreview
+                      card={activeCard}
+                      color={columnColor(activeIndex)}
+                      overdue={activeIndex !== board.columns.length - 1 && isOverdue(activeCard, today)}
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
+          {/* The backend has already saved the board the AI returns, so it is not saved again. */}
+          <ChatSidebar boardId={boardId} onBoardUpdate={replaceBoard} />
         </div>
-        {/* The backend has already saved the board the AI returns, so it is not saved again. */}
-        <ChatSidebar boardId={boardId} onBoardUpdate={replaceBoard} />
       </div>
-    </div>
+    </BoardPeopleContext.Provider>
   );
 };

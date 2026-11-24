@@ -16,6 +16,7 @@ import {
   noFilters,
   parseLabels,
   renameColumn,
+  UNASSIGNED,
   type Card,
   type Column,
 } from "@/lib/kanban";
@@ -185,7 +186,7 @@ describe("filters", () => {
     expect(matchesFilters(card, { ...noFilters, priority: "low" })).toBe(false);
     expect(matchesFilters(card, { ...noFilters, label: "docs" })).toBe(true);
     expect(matchesFilters(card, { ...noFilters, label: "doc" })).toBe(false);
-    expect(matchesFilters(card, { text: "release", priority: "high", label: "ux" })).toBe(false);
+    expect(matchesFilters(card, { text: "release", priority: "high", label: "ux", assignee: "" })).toBe(false);
     expect(hasFilters({ ...noFilters, label: "docs" })).toBe(true);
   });
 });
@@ -195,5 +196,15 @@ describe("columnColor", () => {
     expect(columnColor(0)).toBe("var(--card-backlog)");
     expect(columnColor(4)).toBe("var(--card-done)");
     expect(columnColor(5)).toBe("var(--card-backlog)");
+  });
+  it("filters by assignee, or cards nobody is assigned to, and searches the assignee", () => {
+    const card: Card = { ...initialData.cards["card-1"], assignee: "alice" };
+    const nobody: Card = initialData.cards["card-2"];
+    expect(matchesFilters(card, { ...noFilters, assignee: "alice" })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, assignee: "bob" })).toBe(false);
+    expect(matchesFilters(card, { ...noFilters, assignee: UNASSIGNED })).toBe(false);
+    expect(matchesFilters(nobody, { ...noFilters, assignee: UNASSIGNED })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, text: "ALI" })).toBe(true);
+    expect(hasFilters({ ...noFilters, assignee: UNASSIGNED })).toBe(true);
   });
 });

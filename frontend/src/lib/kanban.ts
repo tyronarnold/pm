@@ -29,6 +29,7 @@ const sampleCard = (id: string, title: string, details: string): Card => ({
   priority: null,
   dueDate: null,
   labels: [],
+  assignee: null,
 });
 
 // The same board the backend gives a new account (as the server returns it).
@@ -230,17 +231,31 @@ export const localToday = (now = new Date()) =>
 // ISO dates compare correctly as strings.
 export const isOverdue = (card: Card, today: string) => Boolean(card.dueDate && card.dueDate < today);
 
-export type Filters = { text: string; priority: Priority | ""; label: string };
+// The assignee filter's value for cards nobody is assigned to (not a valid username).
+export const UNASSIGNED = "(unassigned)";
 
-export const noFilters: Filters = { text: "", priority: "", label: "" };
+// assignee: "" for anyone, UNASSIGNED, or a username.
+export type Filters = { text: string; priority: Priority | ""; label: string; assignee: string };
 
-export const hasFilters = ({ text, priority, label }: Filters) => text.trim() !== "" || priority !== "" || label !== "";
+export const noFilters: Filters = { text: "", priority: "", label: "", assignee: "" };
 
-// Text matches the title, details or a label, ignoring case.
-export const matchesFilters = (card: Card, { text, priority, label }: Filters) => {
+export const hasFilters = ({ text, priority, label, assignee }: Filters) =>
+  text.trim() !== "" || priority !== "" || label !== "" || assignee !== "";
+
+// Text matches the title, details, a label or the assignee, ignoring case.
+export const matchesFilters = (card: Card, { text, priority, label, assignee }: Filters) => {
   const query = text.trim().toLowerCase();
   const matchesText =
     !query ||
-    [card.title, card.details, ...card.labels].some((value) => value.toLowerCase().includes(query));
-  return matchesText && (!priority || card.priority === priority) && (!label || card.labels.includes(label));
+    [card.title, card.details, ...card.labels, card.assignee ?? ""].some((value) =>
+      value.toLowerCase().includes(query)
+    );
+  const matchesAssignee =
+    !assignee || (assignee === UNASSIGNED ? !card.assignee : card.assignee === assignee);
+  return (
+    matchesText &&
+    (!priority || card.priority === priority) &&
+    (!label || card.labels.includes(label)) &&
+    matchesAssignee
+  );
 };

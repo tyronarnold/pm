@@ -20,14 +20,16 @@ You help the user plan and manage the cards and columns on their board.
 
 The board has columns from left to right; the last column holds finished work. \
 Each column lists its cards in order, top to bottom. Each card has a title and details, and optionally \
-a priority ("low", "medium" or "high"), a due date (dueDate, YYYY-MM-DD) and labels (short tags).
+a priority ("low", "medium" or "high"), a due date (dueDate, YYYY-MM-DD), labels (short tags) and \
+an assignee (the username of the person doing it; only people on the board can be assigned).
 
 To change the board, return operations. Allowed operations:
 - create_card: card_id (a temporary id you choose, such as "new-1"; later operations in the same reply \
 can use it to edit or move the new card), column_id, title, details (may be empty), position (0 = top, null = bottom), \
-and optionally priority, due_date (YYYY-MM-DD) and labels (a list of short tags).
-- edit_card: card_id, plus any of title, details, priority, due_date and labels to change. \
-Use null for a field that should not change. labels replaces the card's whole list of labels.
+and optionally priority, due_date (YYYY-MM-DD), labels (a list of short tags) and assignee (a username).
+- edit_card: card_id, plus any of title, details, priority, due_date, labels and assignee to change. \
+Use null for a field that should not change. labels replaces the card's whole list of labels; \
+an empty string as assignee unassigns the card.
 - move_card: card_id, column_id (the destination; may be the same column to reorder), position (0 = top, null = bottom).
 - delete_card: card_id. Only delete cards the user clearly asked you to delete; if it is unclear which card \
 they mean, ask instead of deleting.
@@ -77,9 +79,14 @@ def ask(messages: list[dict]) -> str:
 BOARD_HEADING = "Current board JSON:\n"
 
 
-def build_messages(board: Board, history: list[ChatMessage], message: str) -> list[dict]:
-    """The system prompt, today's date (for due dates) and the board, then the conversation."""
-    context = f"Today is {date.today().isoformat()}.\n{BOARD_HEADING}{board.model_dump_json()}"
+def build_messages(board: Board, people: list[str], history: list[ChatMessage], message: str) -> list[dict]:
+    """The system prompt, today's date (for due dates), who is on the board and the board,
+    then the conversation."""
+    context = (
+        f"Today is {date.today().isoformat()}.\n"
+        f"People on this board (usernames): {', '.join(people)}.\n"
+        f"{BOARD_HEADING}{board.model_dump_json()}"
+    )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "system", "content": context},
@@ -88,12 +95,12 @@ def build_messages(board: Board, history: list[ChatMessage], message: str) -> li
     ]
 
 
-def chat(board: Board, history: list[ChatMessage], message: str) -> ChatResult:
+def chat(board: Board, people: list[str], history: list[ChatMessage], message: str) -> ChatResult:
     """Ask the AI about the board. Raises AIError with a user-facing message on failure."""
     try:
         response = client().chat.completions.parse(
             model=MODEL,
-            messages=build_messages(board, history, message),
+            messages=build_messages(board, people, history, message),
             response_format=ChatResult,
             extra_body=REASONING,
         )

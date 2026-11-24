@@ -92,7 +92,7 @@ If no row is updated, someone else (another tab, or the AI chat) saved first. `P
 ```
 
 - Card order within a column is the order of `cardIds`.
-- `priority` (`low` / `medium` / `high`), `dueDate` (`YYYY-MM-DD`) and `labels` (up to 10, each 1-30 characters after trimming) are optional. They were added after boards were already stored, so cards without them are still valid and are read as `null`, `null` and `[]`; no data migration was needed.
+- `priority` (`low` / `medium` / `high`), `dueDate` (`YYYY-MM-DD`) and `labels` (up to 10, each 1-30 characters after trimming) are optional, and so is `assignee` (a username). They were added after boards were already stored, so cards without them are still valid and are read as `null`, `null`, `[]` and `null`; no data migration was needed. Saves check only the assignee's format, not that they can still see the board: a member who is removed keeps their name on their cards until someone reassigns them.
 - Saving replaces the whole document (`PUT /api/boards/{id}`, and the AI chat after applying its operations).
 - The backend validates the shape with Pydantic models matching the schema, plus checks the schema cannot express:
   - every card id appears in exactly one column, and every id in `cardIds` has a card in `cards` (so a column can only be removed once it is empty)

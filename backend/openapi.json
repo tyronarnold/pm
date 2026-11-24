@@ -970,6 +970,13 @@
             "type": "string",
             "title": "Owner"
           },
+          "members": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Members"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -983,6 +990,7 @@
           "id",
           "name",
           "owner",
+          "members",
           "version",
           "board"
         ],
@@ -1032,6 +1040,10 @@
           "overdue": {
             "type": "integer",
             "title": "Overdue"
+          },
+          "mine": {
+            "type": "integer",
+            "title": "Mine"
           }
         },
         "type": "object",
@@ -1042,7 +1054,8 @@
           "owner",
           "cards",
           "done",
-          "overdue"
+          "overdue",
+          "mine"
         ],
         "title": "BoardSummary"
       },
@@ -1100,6 +1113,18 @@
             "maxItems": 10,
             "title": "Labels",
             "default": []
+          },
+          "assignee": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z0-9._-]{3,32}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee"
           }
         },
         "additionalProperties": false,

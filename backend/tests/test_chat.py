@@ -4,6 +4,7 @@ from datetime import date
 import httpx2
 import openai
 import pytest
+from conftest import register
 from fastapi.testclient import TestClient
 
 from app import ai, db
@@ -183,7 +184,9 @@ def test_request_includes_board_history_and_message(chat, fake_ai):
     messages = request["messages"]
     assert messages[0] == {"role": "system", "content": ai.SYSTEM_PROMPT}
     assert messages[1]["role"] == "system"
-    assert messages[1]["content"].startswith(f"Today is {date.today().isoformat()}.")
+    assert messages[1]["content"].startswith(
+        f"Today is {date.today().isoformat()}.\nPeople on this board (usernames): user.\n"
+    )
     board_json = messages[1]["content"].split(ai.BOARD_HEADING, 1)[1]
     assert Board.model_validate(json.loads(board_json)) == DEFAULT_BOARD
     assert messages[2:] == [*history, {"role": "user", "content": "Add a card"}]
@@ -215,3 +218,20 @@ def test_chat_about_an_unknown_board_is_404(signed_in, fake_ai):
     fake = fake_ai()
     assert signed_in.post("/api/boards/999/chat", json={"message": "hi"}).status_code == 404
     assert fake.requests == []
+
+
+def test_the_ai_is_told_who_is_on_the_board_and_can_only_assign_them(signed_in, board_id, chat, fake_ai):
+    with TestClient(app) as alice:
+        register(alice)
+    signed_in.post(f"/api/boards/{board_id}/members", json={"username": "alice"})
+    fake = fake_ai(
+        operations=[
+            Operation(type="edit_card", card_id="card-1", assignee="alice"),
+            Operation(type="edit_card", card_id="card-2", assignee="mallory"),
+        ]
+    )
+    body = chat("Assign the cards").json()
+    assert "People on this board (usernames): user, alice." in fake.requests[0]["messages"][1]["content"]
+    assert body["board"]["cards"]["card-1"]["assignee"] == "alice"
+    assert body["board"]["cards"]["card-2"]["assignee"] is None
+    assert "1 requested change could not be applied" in body["reply"]

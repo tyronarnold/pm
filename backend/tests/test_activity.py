@@ -91,11 +91,14 @@ def test_board_stats_counts_cards_done_and_overdue():
     board.cards["card-1"].dueDate = date(2026, 1, 1)  # overdue
     board.cards["card-2"].dueDate = date(2026, 6, 1)  # due today: not overdue
     board.cards["card-7"].dueDate = date(2026, 1, 1)  # in the last column: done, not overdue
-    assert board_stats(board, date(2026, 6, 1)) == (8, 2, 1)
+    board.cards["card-3"].assignee = "alice"  # mine
+    board.cards["card-4"].assignee = "bob"
+    board.cards["card-8"].assignee = "alice"  # done, so not counted
+    assert board_stats(board, date(2026, 6, 1), "alice") == (8, 2, 1, 1)
 
 
 def test_board_stats_for_a_board_without_columns():
-    assert board_stats(Board(columns=[], cards={}), date(2026, 6, 1)) == (0, 0, 0)
+    assert board_stats(Board(columns=[], cards={}), date(2026, 6, 1), "alice") == (0, 0, 0, 0)
 
 
 # Routes
@@ -111,7 +114,7 @@ def messages(client, board_id: int) -> list[str]:
 
 def test_board_summaries_include_stats(signed_in, board_id):
     [summary] = signed_in.get("/api/boards").json()
-    assert (summary["cards"], summary["done"], summary["overdue"]) == (8, 2, 0)
+    assert (summary["cards"], summary["done"], summary["overdue"], summary["mine"]) == (8, 2, 0, 0)
 
 
 def test_creating_a_board_is_logged(signed_in):

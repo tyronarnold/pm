@@ -285,3 +285,37 @@ def test_invalid_column_operations_are_skipped():
     board, skipped = apply_operations(DEFAULT_BOARD, operations)
     assert board == DEFAULT_BOARD
     assert skipped == operations
+
+
+def test_assign_and_unassign_people_on_the_board():
+    people = ["user", "alice"]
+    board, skipped = apply_operations(
+        DEFAULT_BOARD,
+        [
+            op("create_card", column_id="col-backlog", title="New", assignee="alice"),
+            op("edit_card", card_id="card-1", assignee="user"),
+        ],
+        people,
+    )
+    assert skipped == []
+    assert board.cards[column(board, "col-backlog")[-1]].assignee == "alice"
+    assert board.cards["card-1"].assignee == "user"
+
+    board, skipped = apply_operations(board, [op("edit_card", card_id="card-1", assignee="")], people)
+    assert skipped == []
+    assert board.cards["card-1"].assignee is None
+
+
+def test_assigning_someone_not_on_the_board_is_skipped():
+    operations = [
+        op("create_card", column_id="col-backlog", title="New", assignee="mallory"),
+        op("edit_card", card_id="card-1", assignee="mallory"),
+    ]
+    board, skipped = apply_operations(DEFAULT_BOARD, operations, ["user"])
+    assert board == DEFAULT_BOARD
+    assert skipped == operations
+
+
+def test_without_people_nobody_can_be_assigned():
+    _, skipped = apply_operations(DEFAULT_BOARD, [op("edit_card", card_id="card-1", assignee="user")])
+    assert len(skipped) == 1

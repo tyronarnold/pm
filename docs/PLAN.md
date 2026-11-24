@@ -284,6 +284,9 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [x] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [x] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
+- [x] Part 19: Card assignees (the people on a board), an assignee filter, "assigned to me" counts, and AI assignment
+- [ ] Part 20: Live updates: people on a shared board see each other's changes without reloading
+- [ ] Part 21: Split `backend/app/main.py` into route modules (no behavior change)
 - [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
 
 ### Part 12: Accounts and multiple boards
@@ -417,3 +420,22 @@ Decisions:
 - Bug found while measuring: two backend tests left SQLite connections open (`with sqlite3.connect(...)` commits but does not close), reported as `ResourceWarning` only. Test connections now use `closing(sqlite3.connect(path, autocommit=True))`, and pytest's `filterwarnings` turns `ResourceWarning` into a failure (checked: the old `test_board.py` fails with it). The fake AI client moved to `conftest.py` so the chat and activity tests share it
 
 Results: 174 backend tests (180 with live), 116 Vitest, 41 Playwright, all passing; coverage 99.87% backend, 98.69% lines frontend.
+
+### Part 19: Card assignees
+
+Decisions:
+- Cards have an optional `assignee` (a username), with a default like the other optional card fields, so stored boards stay valid. A save checks only the username format, not membership: otherwise removing a member would make every later save of a board with their cards fail. Their name stays on the card (and in the card form's choices) until someone reassigns it
+- Board details now include `members`, so the frontend knows the people on the board (owner first). The sharing panel passes member changes to the open board, so a newly shared person can be assigned at once
+- The AI is told the people on the board (a line before the board JSON) and can set `assignee` on create and edit; an empty string unassigns. `apply_operations` takes `people` and skips an assignment to anyone else (counted in the reply note), since the model writes free text
+- `BoardPeopleContext` carries the people and the signed-in user to the card form and filters instead of passing props through columns and cards
+- The assignee filter offers Anyone, each person ("user (me)" for yourself) and Unassigned; `UNASSIGNED` is "(unassigned)", which can never be a username. Search also matches the assignee
+- Board summaries count `mine` (the user's assigned cards not in the last column), shown in the overview as "N assigned to you"
+- Also: ESLint ignores `coverage/` (the HTML coverage report triggered warnings)
+
+Checklist:
+- [x] Backend: card field, members in details, AI people and assignment, `mine`
+- [x] Frontend: assignee in the card form and on cards, filter, overview count
+- [x] Tests: pytest (format, operations, AI people, former members, `mine`; live assignment), Vitest (filter logic, form, former member, filter UI, sharing updates, overview), Playwright (owner assigns, member filters by "me")
+- [x] Docs
+
+Results: 190 backend tests (including live, 99.87% coverage), 122 Vitest (98.7% lines), 42 Playwright, all passing.

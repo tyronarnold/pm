@@ -18,7 +18,7 @@ def test_live_two_plus_two():
 
 
 def test_live_chat_creates_card():
-    result = ai.chat(DEFAULT_BOARD, [], "Add a card called Test to Backlog")
+    result = ai.chat(DEFAULT_BOARD, ["user"], [], "Add a card called Test to Backlog")
     assert result.reply
     creates = [op for op in result.operations if op.type == "create_card"]
     assert len(creates) == 1
@@ -27,22 +27,21 @@ def test_live_chat_creates_card():
 
 
 def test_live_chat_deletes_card():
-    result = ai.chat(DEFAULT_BOARD, [], "Delete the QA micro-interactions card.")
+    result = ai.chat(DEFAULT_BOARD, ["user"], [], "Delete the QA micro-interactions card.")
     board, _ = apply_operations(DEFAULT_BOARD, result.operations)
     assert "card-6" not in board.cards
     assert len(board.cards) == len(DEFAULT_BOARD.cards) - 1
 
 
 def test_live_chat_creates_then_moves_card():
-    result = ai.chat(DEFAULT_BOARD, [], 'Create a card titled "Ship it" in Backlog, then move it to Done.')
+    result = ai.chat(DEFAULT_BOARD, ["user"], [], 'Create a card titled "Ship it" in Backlog, then move it to Done.')
     board, _ = apply_operations(DEFAULT_BOARD, result.operations)
     done = next(c for c in board.columns if c.id == "col-done")
     assert "Ship it" in [board.cards[card_id].title for card_id in done.cardIds]
 
 
 def test_live_chat_sets_priority_due_date_and_labels():
-    result = ai.chat(
-        DEFAULT_BOARD, [],
+    result = ai.chat(DEFAULT_BOARD, ["user"], [],
         'Make the "QA micro-interactions" card high priority, due on 2027-01-15, with the label "qa".',
     )
     board, skipped = apply_operations(DEFAULT_BOARD, result.operations)
@@ -55,10 +54,17 @@ def test_live_chat_sets_priority_due_date_and_labels():
 
 
 def test_live_chat_adds_a_column_and_moves_a_card_into_it():
-    result = ai.chat(DEFAULT_BOARD, [], 'Add a column called "Blocked" after In Progress and move "Design card layout" into it.')
+    result = ai.chat(DEFAULT_BOARD, ["user"], [], 'Add a column called "Blocked" after In Progress and move "Design card layout" into it.')
     board, skipped = apply_operations(DEFAULT_BOARD, result.operations)
     assert skipped == []
     titles = [column.title for column in board.columns]
     assert titles.index("Blocked") == titles.index("In Progress") + 1
     blocked = board.columns[titles.index("Blocked")]
     assert blocked.cardIds == ["card-5"]
+
+
+def test_live_chat_assigns_a_card_to_someone_on_the_board():
+    result = ai.chat(DEFAULT_BOARD, ["user", "alice"], [], 'Assign "QA micro-interactions" to alice.')
+    board, skipped = apply_operations(DEFAULT_BOARD, result.operations, ["user", "alice"])
+    assert skipped == []
+    assert board.cards["card-6"].assignee == "alice"

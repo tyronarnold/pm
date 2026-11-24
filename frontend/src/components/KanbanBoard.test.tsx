@@ -20,7 +20,7 @@ const savedBoards = () => puts().map((put) => put.board);
 const lastSaved = () => savedBoards().at(-1)!;
 
 const renderBoard = () =>
-  render(<KanbanBoard boardId={1} initialBoard={initialData} initialVersion={1} />);
+  render(<KanbanBoard boardId={1} initialBoard={initialData} initialVersion={1} people={["user"]} username="user" />);
 
 // Behaves like the backend: a save based on version n is stored as version n + 1.
 const fakeServer = async (url: string, init?: RequestInit) => {
@@ -88,6 +88,7 @@ describe("KanbanBoard", () => {
       priority: null,
       dueDate: null,
       labels: [],
+      assignee: null,
     });
 
     await userEvent.click(within(column).getByRole("button", { name: /delete new card/i }));
@@ -235,7 +236,7 @@ describe("KanbanBoard", () => {
     };
 
     const renderDetailed = () =>
-      render(<KanbanBoard boardId={1} initialBoard={detailedBoard} initialVersion={1} />);
+      render(<KanbanBoard boardId={1} initialBoard={detailedBoard} initialVersion={1} people={["user"]} username="user" />);
 
     const visibleTitles = () => screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
 
@@ -273,6 +274,7 @@ describe("KanbanBoard", () => {
         priority: "medium",
         dueDate: "2026-12-01",
         labels: ["launch", "marketing"],
+        assignee: null,
       });
       expect(within(column).getByText("medium priority")).toBeInTheDocument();
     });
@@ -423,7 +425,7 @@ describe("KanbanBoard", () => {
           "card-7": { ...initialData.cards["card-7"], dueDate: "2020-01-01" },
         },
       };
-      render(<KanbanBoard boardId={1} initialBoard={board} initialVersion={1} />);
+      render(<KanbanBoard boardId={1} initialBoard={board} initialVersion={1} people={["user"]} username="user" />);
       expect(within(screen.getByTestId("card-card-7")).getByText("Due Jan 1, 2020")).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Move Done column left" }));
       expect(within(screen.getByTestId("card-card-7")).getByText("Overdue Jan 1, 2020")).toBeInTheDocument();
@@ -431,7 +433,7 @@ describe("KanbanBoard", () => {
 
     it("names untitled columns in the control labels", () => {
       const board: BoardData = { ...initialData, columns: [{ id: "col-x", title: "", cardIds: [] }], cards: {} };
-      render(<KanbanBoard boardId={1} initialBoard={board} initialVersion={1} />);
+      render(<KanbanBoard boardId={1} initialBoard={board} initialVersion={1} people={["user"]} username="user" />);
       expect(screen.getByRole("button", { name: "Delete untitled column" })).toBeEnabled();
     });
   });
@@ -465,5 +467,64 @@ describe("KanbanBoard", () => {
     await userEvent.click(within(column).getByRole("button", { name: "Cancel" }));
     expect(within(column).queryByLabelText("Card title")).not.toBeInTheDocument();
     expect(savedBoards()).toHaveLength(0);
+  });
+
+  describe("assignees", () => {
+    const renderWithPeople = (board: BoardData = initialData) =>
+      render(
+        <KanbanBoard boardId={1} initialBoard={board} initialVersion={1} people={["user", "alice"]} username="user" />
+      );
+
+    it("assigns a card to someone on the board", async () => {
+      renderWithPeople();
+      await userEvent.click(screen.getByRole("button", { name: "Edit Align roadmap themes" }));
+      expect(within(screen.getByLabelText("Assignee")).getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "Unassigned",
+        "user",
+        "alice",
+      ]);
+      await userEvent.selectOptions(screen.getByLabelText("Assignee"), "alice");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(lastSaved().cards["card-1"].assignee).toBe("alice");
+      expect(within(screen.getByTestId("card-card-1")).getByLabelText("Assigned to alice")).toHaveTextContent("alice");
+    });
+
+    it("keeps a former member selectable on their card", async () => {
+      renderWithPeople({
+        ...initialData,
+        cards: { ...initialData.cards, "card-1": { ...initialData.cards["card-1"], assignee: "zoe" } },
+      });
+      await userEvent.click(screen.getByRole("button", { name: "Edit Align roadmap themes" }));
+      expect(screen.getByLabelText("Assignee")).toHaveValue("zoe");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(lastSaved().cards["card-1"].assignee).toBe("zoe");
+    });
+
+    it("filters by assignee, including me and unassigned", async () => {
+      renderWithPeople({
+        ...initialData,
+        cards: {
+          ...initialData.cards,
+          "card-1": { ...initialData.cards["card-1"], assignee: "alice" },
+          "card-2": { ...initialData.cards["card-2"], assignee: "user" },
+        },
+      });
+      const filter = screen.getByLabelText("Filter by assignee");
+      expect(within(filter).getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "Anyone",
+        "user (me)",
+        "alice",
+        "Unassigned",
+      ]);
+      const titles = () => screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
+
+      await userEvent.selectOptions(filter, "user (me)");
+      expect(titles()).toEqual(["Gather customer signals"]);
+      await userEvent.selectOptions(filter, "alice");
+      expect(titles()).toEqual(["Align roadmap themes"]);
+      await userEvent.selectOptions(filter, "Unassigned");
+      expect(titles()).toHaveLength(6);
+    });
   });
 });

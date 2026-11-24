@@ -39,7 +39,7 @@
       }
     },
     "cards": {
-      "description": "Cards keyed by id. Each key equals the card's id. priority, dueDate and labels were added later and are optional, so boards saved before them stay valid; the backend fills in null / null / [] when it reads them.",
+      "description": "Cards keyed by id. Each key equals the card's id. priority, dueDate, labels and assignee were added later and are optional, so boards saved before them stay valid; the backend fills in null / null / [] / null when it reads them.",
       "type": "object",
       "additionalProperties": {
         "type": "object",
@@ -87,6 +87,14 @@
               "minLength": 1,
               "maxLength": 30
             }
+          },
+          "assignee": {
+            "description": "Optional username of the person doing the card; null when nobody is assigned. Only the format is checked, so a former member's name can remain.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z0-9._-]{3,32}$"
           }
         }
       }

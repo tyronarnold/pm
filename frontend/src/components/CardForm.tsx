@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useContext, useState, type FormEvent } from "react";
+import { BoardPeopleContext } from "@/components/BoardPeople";
 import { parseLabels, priorities, type CardFields, type Priority } from "@/lib/kanban";
 
 type CardFormProps = {
@@ -8,18 +9,29 @@ type CardFormProps = {
   onCancel: () => void;
 };
 
-export const emptyCard: CardFields = { title: "", details: "", priority: null, dueDate: null, labels: [] };
+export const emptyCard: CardFields = {
+  title: "",
+  details: "",
+  priority: null,
+  dueDate: null,
+  labels: [],
+  assignee: null,
+};
 
 const inputClass =
   "w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--primary-blue)]";
 
-// Title (required), details, priority, due date and labels (comma separated) of a card.
+// Title (required), details, priority, due date, labels (comma separated) and assignee of a card.
 export const CardForm = ({ initial, submitLabel, onSubmit, onCancel }: CardFormProps) => {
   const [title, setTitle] = useState(initial.title);
   const [details, setDetails] = useState(initial.details);
   const [priority, setPriority] = useState<Priority | "">(initial.priority ?? "");
   const [dueDate, setDueDate] = useState(initial.dueDate ?? "");
   const [labels, setLabels] = useState(initial.labels.join(", "));
+  const [assignee, setAssignee] = useState(initial.assignee ?? "");
+  const { people } = useContext(BoardPeopleContext);
+  // Someone who has lost access stays selectable while their card is edited, so it is not lost.
+  const choices = initial.assignee && !people.includes(initial.assignee) ? [...people, initial.assignee] : people;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -32,6 +44,7 @@ export const CardForm = ({ initial, submitLabel, onSubmit, onCancel }: CardFormP
       priority: priority || null,
       dueDate: dueDate || null,
       labels: parseLabels(labels),
+      assignee: assignee || null,
     });
   };
 
@@ -82,6 +95,19 @@ export const CardForm = ({ initial, submitLabel, onSubmit, onCancel }: CardFormP
         aria-label="Labels"
         className={`${inputClass} text-[var(--card-text)]`}
       />
+      <select
+        value={assignee}
+        onChange={(event) => setAssignee(event.target.value)}
+        aria-label="Assignee"
+        className={`${inputClass} text-[var(--card-text)]`}
+      >
+        <option value="">Unassigned</option>
+        {choices.map((person) => (
+          <option key={person} value={person}>
+            {person}
+          </option>
+        ))}
+      </select>
       <div className="flex items-center gap-2">
         <button
           type="submit"

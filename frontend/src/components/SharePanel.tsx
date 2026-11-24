@@ -6,6 +6,7 @@ type SharePanelProps = {
   owner: string;
   username: string; // the signed-in user
   onLeave: () => void;
+  onMembersChange: (members: string[]) => void; // after sharing or removing someone
   onClose: () => void;
 };
 
@@ -15,7 +16,7 @@ const smallButtonClass =
   "rounded-full border border-[var(--stroke)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--gray-text)] transition hover:text-[var(--navy-dark)]";
 
 // Who a board is shared with. The owner adds and removes members; a member can leave.
-export const SharePanel = ({ boardId, owner, username, onLeave, onClose }: SharePanelProps) => {
+export const SharePanel = ({ boardId, owner, username, onLeave, onMembersChange, onClose }: SharePanelProps) => {
   const [members, setMembers] = useState<string[] | null>(null);
   const [newMember, setNewMember] = useState("");
   const [message, setMessage] = useState("");
@@ -24,6 +25,12 @@ export const SharePanel = ({ boardId, owner, username, onLeave, onClose }: Share
   useEffect(() => {
     listMembers(boardId).then(setMembers, () => setMessage(ACTION_FAILED));
   }, [boardId]);
+
+  const reload = async () => {
+    const loaded = await listMembers(boardId);
+    setMembers(loaded);
+    onMembersChange(loaded);
+  };
 
   const handleShare = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -35,14 +42,14 @@ export const SharePanel = ({ boardId, owner, username, onLeave, onClose }: Share
     setMessage(error ?? "");
     if (!error) {
       setNewMember("");
-      setMembers(await listMembers(boardId));
+      await reload();
     }
   };
 
   const handleRemove = async (member: string) => {
     try {
       await removeMember(boardId, member);
-      setMembers(await listMembers(boardId));
+      await reload();
       setMessage("");
     } catch {
       setMessage(ACTION_FAILED);

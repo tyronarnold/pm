@@ -23,7 +23,7 @@ const formatDate = (isoDate: string) =>
 
 // Priority, due date and labels, when the card has them.
 export const CardMeta = ({ card, overdue }: { card: Card; overdue: boolean }) => {
-  if (!card.priority && !card.dueDate && card.labels.length === 0) {
+  if (!card.priority && !card.dueDate && card.labels.length === 0 && !card.assignee) {
     return null;
   }
   return (
@@ -46,6 +46,18 @@ export const CardMeta = ({ card, overdue }: { card: Card; overdue: boolean }) =>
           )}
         >
           {overdue ? "Overdue" : "Due"} {formatDate(card.dueDate)}
+        </span>
+      )}
+      {card.assignee && (
+        <span
+          className={clsx(pillClass, "bg-[var(--primary-blue)] text-white")}
+          aria-label={`Assigned to ${card.assignee}`}
+        >
+          <svg viewBox="0 0 20 20" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+            <circle cx="10" cy="6.5" r="3.5" />
+            <path d="M3 17c0-3.9 3.1-6 7-6s7 2.1 7 6z" />
+          </svg>
+          {card.assignee}
         </span>
       )}
       {card.labels.map((label) => (

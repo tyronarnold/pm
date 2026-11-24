@@ -280,14 +280,21 @@ class BoardSummary(BaseModel):
     cards: int
     done: int  # cards in the last column
     overdue: int  # past their due date (by the server's date), not in the last column
+    mine: int  # assigned to the signed-in user, not in the last column
 
 
 class BoardDetail(BaseModel):
     id: int
     name: str
     owner: str
+    members: list[str]  # usernames the board is shared with (not the owner)
     version: int
     board: Board
+
+    @property
+    def people(self) -> list[str]:
+        """Everyone with access: the owner, then the members."""
+        return [self.owner, *self.members]
 
 
 class NewMember(BaseModel):
@@ -321,21 +328,27 @@ def find_owned_board(user: db.User, board_id: int) -> db.BoardRow:
     return row
 
 
-def summary(row: db.BoardRow) -> BoardSummary:
-    stats = board_stats(Board.model_validate_json(row.data), date.today())
+def summary(row: db.BoardRow, username: str) -> BoardSummary:
+    """The board's summary, with counts for `username` (the signed-in user)."""
+    stats = board_stats(Board.model_validate_json(row.data), date.today(), username)
     return BoardSummary(id=row.id, name=row.name, updated_at=row.updated_at, owner=row.owner, **stats._asdict())
 
 
 def detail(row: db.BoardRow) -> BoardDetail:
     return BoardDetail(
-        id=row.id, name=row.name, owner=row.owner, version=row.version, board=Board.model_validate_json(row.data)
+        id=row.id,
+        name=row.name,
+        owner=row.owner,
+        members=db.list_members(row.id),
+        version=row.version,
+        board=Board.model_validate_json(row.data),
     )
 
 
 @app.get("/api/boards")
 def list_boards(user: CurrentUser) -> list[BoardSummary]:
     """The boards the user owns or that are shared with them, oldest first."""
-    return [summary(row) for row in db.list_boards(user.id)]
+    return [summary(row, user.username) for row in db.list_boards(user.id)]
 
 
 @app.post("/api/boards", status_code=201)
@@ -357,7 +370,7 @@ def rename_board(board_id: int, new: BoardName, user: CurrentUser) -> BoardSumma
     db.rename_board(user.id, board_id, new.name)
     if new.name != old_name:
         db.add_activity(board_id, user.username, [f'renamed the board from "{old_name}" to "{new.name}"'])
-    return summary(find_board(user, board_id))
+    return summary(find_board(user, board_id), user.username)
 
 
 @app.delete("/api/boards/{board_id}", status_code=204, responses=OWNER_ONLY)
@@ -462,7 +475,8 @@ def skipped_note(count: int) -> str:
     changes = "1 requested change" if count == 1 else f"{count} requested changes"
     return (
         f"\n\n(Note: {changes} could not be applied, because they referred to a card or column"
-        " that does not exist, had no title, had an invalid value, or was a column that still had cards.)"
+        " that does not exist, had no title, had an invalid value, was a column that still had cards,"
+        " or assigned someone who is not on the board.)"
     )
 
 
@@ -472,13 +486,14 @@ def skipped_note(count: int) -> str:
 )
 def chat(board_id: int, request: ChatRequest, user: CurrentUser) -> ChatResponse:
     try:
-        result = ai.chat(detail(find_board(user, board_id)).board, request.history, request.message)
+        shown = detail(find_board(user, board_id))
+        result = ai.chat(shown.board, shown.people, request.history, request.message)
     except ai.AIError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     # The user may have saved changes while the AI was working, so apply its
     # operations to the latest saved board rather than the one it was shown.
     latest = detail(find_board(user, board_id))
-    updated, skipped = apply_operations(latest.board, result.operations)
+    updated, skipped = apply_operations(latest.board, result.operations, latest.people)
     reply = result.reply + (skipped_note(len(skipped)) if skipped else "")
     if updated == latest.board:
         return ChatResponse(reply=reply, board=None, version=latest.version)

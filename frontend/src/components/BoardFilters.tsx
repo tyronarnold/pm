@@ -1,4 +1,6 @@
-import { hasFilters, noFilters, priorities, type Filters, type Priority } from "@/lib/kanban";
+import { useContext } from "react";
+import { BoardPeopleContext } from "@/components/BoardPeople";
+import { hasFilters, noFilters, priorities, UNASSIGNED, type Filters, type Priority } from "@/lib/kanban";
 
 type BoardFiltersProps = {
   filters: Filters;
@@ -10,7 +12,9 @@ const fieldClass =
   "rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-sm text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]";
 
 // Search and filters for the cards shown on the board.
-export const BoardFilters = ({ filters, labels, onChange }: BoardFiltersProps) => (
+export const BoardFilters = ({ filters, labels, onChange }: BoardFiltersProps) => {
+  const { people, username } = useContext(BoardPeopleContext);
+  return (
   <div role="search" aria-label="Filter cards" className="flex flex-wrap items-center gap-3">
     <input
       type="search"
@@ -48,6 +52,20 @@ export const BoardFilters = ({ filters, labels, onChange }: BoardFiltersProps) =
         ))}
       </select>
     )}
+    <select
+      value={filters.assignee}
+      onChange={(event) => onChange({ ...filters, assignee: event.target.value })}
+      aria-label="Filter by assignee"
+      className={fieldClass}
+    >
+      <option value="">Anyone</option>
+      {people.map((person) => (
+        <option key={person} value={person}>
+          {person === username ? `${person} (me)` : person}
+        </option>
+      ))}
+      <option value={UNASSIGNED}>Unassigned</option>
+    </select>
     {hasFilters(filters) && (
       <button
         type="button"
@@ -59,3 +77,4 @@ export const BoardFilters = ({ filters, labels, onChange }: BoardFiltersProps) =
     )}
   </div>
 );
+};

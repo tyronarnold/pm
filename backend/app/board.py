@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Collection
 from datetime import date
 from typing import Annotated, Literal, NamedTuple
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 
 Priority = Literal["low", "medium", "high"]
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=30)]
+Username = Annotated[str, StringConstraints(pattern=r"^[a-z0-9._-]{3,32}$")]
 
 
 class Card(BaseModel):
@@ -19,6 +21,9 @@ class Card(BaseModel):
     priority: Priority | None = None
     dueDate: date | None = None
     labels: list[Label] = Field(default=[], max_length=10)
+    # The person doing it: a username. Only the format is checked when saving, so cards
+    # assigned to someone who later loses access to the board keep their name.
+    assignee: Username | None = None
 
 
 class Column(BaseModel):
@@ -118,9 +123,9 @@ class Operation(BaseModel):
 
     create_card: card_id (a temporary id that later operations in the same list
         can use to refer to the new card), column_id, title, details,
-        position (null = end of column), priority, due_date, labels
-    edit_card: card_id, and any of title, details, priority, due_date, labels
-        (null = unchanged)
+        position (null = end of column), priority, due_date, labels, assignee
+    edit_card: card_id, and any of title, details, priority, due_date, labels,
+        assignee (null = unchanged; an empty assignee unassigns)
     move_card: card_id, column_id, position (null = end of column)
     delete_card: card_id
     create_column: column_id (a temporary id, like card_id in create_card), title,
@@ -143,6 +148,7 @@ class Operation(BaseModel):
     priority: Priority | None = None
     due_date: str | None = None  # YYYY-MM-DD; checked when the card is built
     labels: list[str] | None = None
+    assignee: str | None = None  # a username; "" unassigns
 
     def card_fields(self) -> dict:
         """The card fields this operation sets (those that are not null), in the Card's names."""
@@ -153,7 +159,10 @@ class Operation(BaseModel):
             "dueDate": self.due_date,
             "labels": self.labels,
         }
-        return {name: value for name, value in fields.items() if value is not None}
+        changes = {name: value for name, value in fields.items() if value is not None}
+        if self.assignee is not None:
+            changes["assignee"] = self.assignee or None
+        return changes
 
 
 def _insert(items: list, item, position: int | None) -> None:
@@ -194,12 +203,14 @@ class _NewIds(NamedTuple):
     columns: dict[str, str]
 
 
-def _apply(board: Board, op: Operation, new_ids: _NewIds) -> bool:
+def _apply(board: Board, op: Operation, new_ids: _NewIds, people: Collection[str]) -> bool:
     """Apply one operation to the board in place; False if it cannot be applied."""
     column_id = new_ids.columns.get(op.column_id, op.column_id)
     column = next((column for column in board.columns if column.id == column_id), None)
     card_id = new_ids.cards.get(op.card_id, op.card_id)
     card = board.cards.get(card_id)
+    if op.assignee and op.assignee not in people:
+        return False
 
     match op.type:
         case "create_card":
@@ -245,18 +256,19 @@ def _apply(board: Board, op: Operation, new_ids: _NewIds) -> bool:
     return True
 
 
-def apply_operations(board: Board, operations: list[Operation]) -> Applied:
+def apply_operations(board: Board, operations: list[Operation], people: Collection[str] = ()) -> Applied:
     """Return a new board with the operations applied in order, plus the skipped ones.
 
     New cards and columns always get a generated id; a temporary id given in
     create_card or create_column is mapped to it for the rest of the list.
     Operations that reference unknown cards or columns, change nothing, would
-    leave a card invalid (no title, a bad due date, too many labels), or delete
-    a column that still has cards are skipped.
+    leave a card invalid (no title, a bad due date, too many labels), delete a
+    column that still has cards, or assign a card to someone not in `people`
+    (the usernames with access to the board) are skipped.
     """
     board = board.model_copy(deep=True)
     new_ids = _NewIds({}, {})
-    skipped = [op for op in operations if not _apply(board, op, new_ids)]
+    skipped = [op for op in operations if not _apply(board, op, new_ids, people)]
     return Applied(board, skipped)
 
 
@@ -314,11 +326,15 @@ class BoardStats(NamedTuple):
     cards: int
     done: int  # cards in the last column, which holds finished work
     overdue: int  # due before `today`, and not in the last column
+    mine: int  # assigned to the user, and not in the last column
 
 
-def board_stats(board: Board, today: date) -> BoardStats:
+def board_stats(board: Board, today: date, username: str) -> BoardStats:
     done_ids = set(board.columns[-1].cardIds) if board.columns else set()
-    overdue = sum(
-        1 for card in board.cards.values() if card.dueDate and card.dueDate < today and card.id not in done_ids
+    open_cards = [card for card in board.cards.values() if card.id not in done_ids]
+    return BoardStats(
+        cards=len(board.cards),
+        done=len(done_ids),
+        overdue=sum(1 for card in open_cards if card.dueDate and card.dueDate < today),
+        mine=sum(1 for card in open_cards if card.assignee == username),
     )
-    return BoardStats(cards=len(board.cards), done=len(done_ids), overdue=overdue)

@@ -72,9 +72,18 @@ export const OverviewPanel = ({ username, onOpen, onClose }: OverviewPanelProps)
                   >
                     <span className="block h-full bg-[var(--primary-blue)]" style={{ width: `${percent}%` }} />
                   </span>
-                  {board.overdue > 0 && (
-                    <span className="self-start rounded-full bg-[var(--logout)] px-2.5 py-0.5 text-[11px] font-semibold text-white">
-                      {board.overdue} overdue
+                  {(board.overdue > 0 || board.mine > 0) && (
+                    <span className="flex flex-wrap gap-2">
+                      {board.mine > 0 && (
+                        <span className="rounded-full bg-[var(--primary-blue)] px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                          {board.mine} assigned to you
+                        </span>
+                      )}
+                      {board.overdue > 0 && (
+                        <span className="rounded-full bg-[var(--logout)] px-2.5 py-0.5 text-[11px] font-semibold text-white">
+                          {board.overdue} overdue
+                        </span>
+                      )}
                     </span>
                   )}
                 </button>

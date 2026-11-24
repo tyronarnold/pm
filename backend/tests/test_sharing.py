@@ -170,3 +170,32 @@ def test_init_db_adds_the_members_table_to_an_older_database(db_path):
     with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert "board_members" in tables
+
+
+def test_board_details_list_the_members(signed_in, board_id, alice):
+    share(signed_in, board_id, "alice")
+    assert signed_in.get(f"/api/boards/{board_id}").json()["members"] == ["alice"]
+    assert alice.get(f"/api/boards/{board_id}").json()["members"] == ["alice"]
+
+
+def test_assigned_cards_count_as_mine_for_each_user(signed_in, board_id, alice):
+    share(signed_in, board_id, "alice")
+    board = DEFAULT_BOARD.model_dump()
+    board["cards"]["card-1"]["assignee"] = "alice"
+    board["cards"]["card-2"]["assignee"] = "alice"
+    signed_in.put(f"/api/boards/{board_id}", json={"version": 1, "board": board})
+    shared = next(b for b in alice.get("/api/boards").json() if b["id"] == board_id)
+    assert shared["mine"] == 2
+    assert signed_in.get("/api/boards").json()[0]["mine"] == 0
+
+
+def test_a_removed_members_assignments_stay_and_the_board_still_saves(signed_in, board_id, alice):
+    share(signed_in, board_id, "alice")
+    board = DEFAULT_BOARD.model_dump()
+    board["cards"]["card-1"]["assignee"] = "alice"
+    signed_in.put(f"/api/boards/{board_id}", json={"version": 1, "board": board})
+    signed_in.delete(f"/api/boards/{board_id}/members/alice")
+    board["cards"]["card-2"]["title"] = "Still saves"
+    response = signed_in.put(f"/api/boards/{board_id}", json={"version": 2, "board": board})
+    assert response.status_code == 200
+    assert response.json()["board"]["cards"]["card-1"]["assignee"] == "alice"

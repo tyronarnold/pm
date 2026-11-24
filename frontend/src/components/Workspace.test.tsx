@@ -276,6 +276,19 @@ describe("Workspace", () => {
       expect(await within(panel).findByText("Not shared with anyone yet.")).toBeInTheDocument();
     });
 
+    it("makes a newly shared member assignable on the open board", async () => {
+      const { state } = createFakeServer();
+      state.passwords.set("alice", "alice-password");
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      await userEvent.type(within(panel).getByLabelText("Share with (username)"), "alice");
+      await userEvent.click(within(panel).getByRole("button", { name: "Share" }));
+      await within(panel).findByRole("button", { name: "Remove alice" });
+
+      await userEvent.click(screen.getByRole("button", { name: "Edit Align roadmap themes" }));
+      expect(within(screen.getByLabelText("Assignee")).getByRole("option", { name: "alice" })).toBeInTheDocument();
+    });
+
     it("shows why a board could not be shared", async () => {
       createFakeServer();
       renderWorkspace();
@@ -605,6 +618,23 @@ describe("Workspace", () => {
       expect(shared).toHaveTextContent("0 cards, 0 done");
       expect(shared).not.toHaveTextContent("overdue");
       expect(within(shared).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+    });
+
+    it("shows how many open cards are assigned to you", async () => {
+      const { state } = createFakeServer();
+      state.boards[0].board = {
+        ...state.boards[0].board,
+        cards: {
+          ...state.boards[0].board.cards,
+          "card-1": { ...state.boards[0].board.cards["card-1"], assignee: "user" },
+          "card-7": { ...state.boards[0].board.cards["card-7"], assignee: "user" }, // done
+        },
+      };
+      renderWorkspace();
+      const panel = await openOverview();
+      expect(await within(panel).findByRole("button", { name: "Open My first board" })).toHaveTextContent(
+        "1 assigned to you"
+      );
     });
 
     it("opens a board and closes", async () => {

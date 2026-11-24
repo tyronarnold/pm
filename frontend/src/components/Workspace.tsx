@@ -207,6 +207,7 @@ export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: Wor
               setShowSharing(false);
               act(() => open());
             }}
+            onMembersChange={(members) => setCurrent({ ...current, members })}
             onClose={() => setShowSharing(false)}
           />
         )}
@@ -243,6 +244,8 @@ export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: Wor
             boardId={current.id}
             initialBoard={current.board}
             initialVersion={current.version}
+            people={[current.owner, ...current.members]}
+            username={username}
           />
         )}
       </main>
