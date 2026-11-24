@@ -279,7 +279,7 @@ Roadmap (one part per working session; check off as done):
 
 - [x] Part 12: Accounts and multiple boards
 - [x] Part 13: Richer cards (priority, due date, labels) and board search / filter
-- [ ] Part 14: Editable columns (add, rename, remove, reorder) per board
+- [x] Part 14: Editable columns (add, rename, remove, reorder) per board
 - [ ] Part 15: Board sharing with other users (members can view and edit)
 - [ ] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
@@ -330,3 +330,23 @@ Checklist:
 - [x] Docs and screenshot
 
 Results: 117 backend tests (including live), 73 Vitest, 27 Playwright, all passing.
+
+### Part 14: Editable columns
+
+Decisions:
+- The "columns are fixed" rule is gone: `PUT /api/boards/{id}` accepts any valid board. The `Board` model now also checks that column ids are unique and never equal a card id (drag and drop treats both as drop targets, and `moveCard` looks column ids up first)
+- A column can only be deleted when it is empty. No extra rule was needed: the existing check that every card is in exactly one column already rejects a board that drops a column with cards. The UI disables the delete button with the hint "Move or delete its cards first", and the AI is told the same
+- New columns are added at the end (predictable; they can then be moved). The last column counts as finished work, so moving columns changes which cards can be overdue
+- Card colors follow the column's position (`columnColor`), repeating the five standard colors, so the default board looks the same and new columns get a color
+- Column controls are arrow buttons (move left / right) and a delete button revealed on hover, like the card icons, rather than drag and drop of columns: simpler, and works with the keyboard
+- Columns share the row's width (minimum 240px) and the row scrolls sideways when they do not fit; below `lg` they stack as before
+- The AI gains `create_column` (with a temporary id later operations can use), `rename_column` and `delete_column` (empty only). `apply_operations` was restructured into `_apply` (one operation, returns whether it applied) with separate temporary-id maps for cards and columns
+- jsdom keeps `var(...)` in inline styles, but `toHaveStyle` reads computed styles and cannot resolve variables, so component tests check `element.style.backgroundColor`
+
+Checklist:
+- [x] Backend: validation, column operations, AI prompt
+- [x] Frontend: add column, move left / right, delete when empty, colors by position, scrolling layout
+- [x] Tests: pytest (column changes accepted, duplicate and clashing ids, non-empty removal, column operations, live AI adding a column and moving a card into it), Vitest (helpers, column UI, colors, overdue after reordering), Playwright (`columns.spec.ts`)
+- [x] Docs
+
+Results: 125 backend tests (including live), 85 Vitest, 30 Playwright, all passing.

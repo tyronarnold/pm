@@ -10,14 +10,17 @@ export type Priority = NonNullable<Card["priority"]>;
 
 export const priorities: Priority[] = ["high", "medium", "low"];
 
-// Card background per column (the column set is fixed).
-export const columnColors: Record<string, string> = {
-  "col-backlog": "var(--card-backlog)",
-  "col-discovery": "var(--card-discovery)",
-  "col-progress": "var(--card-progress)",
-  "col-review": "var(--card-review)",
-  "col-done": "var(--card-done)",
-};
+// Card background by column position, repeating after five columns
+// (the standard Backlog ... Done columns keep their colors).
+const cardColors = [
+  "var(--card-backlog)",
+  "var(--card-discovery)",
+  "var(--card-progress)",
+  "var(--card-review)",
+  "var(--card-done)",
+];
+
+export const columnColor = (index: number) => cardColors[index % cardColors.length];
 
 const sampleCard = (id: string, title: string, details: string): Card => ({
   id,
@@ -165,6 +168,30 @@ export const editCard = (board: BoardData, cardId: string, fields: CardFields): 
   ...board,
   cards: { ...board.cards, [cardId]: { ...fields, id: cardId } },
 });
+
+// Adds the column after the last one.
+export const addColumn = (board: BoardData, column: Column): BoardData => ({
+  ...board,
+  columns: [...board.columns, column],
+});
+
+// Only for empty columns: every card must stay in a column.
+export const deleteColumn = (board: BoardData, columnId: string): BoardData => ({
+  ...board,
+  columns: board.columns.filter((column) => column.id !== columnId),
+});
+
+// Moves the column `offset` places (-1 = left, 1 = right); does nothing past either end.
+export const moveColumn = (board: BoardData, columnId: string, offset: number): BoardData => {
+  const from = board.columns.findIndex((column) => column.id === columnId);
+  const to = from + offset;
+  if (from === -1 || to < 0 || to >= board.columns.length) {
+    return board;
+  }
+  const columns = [...board.columns];
+  columns.splice(to, 0, ...columns.splice(from, 1));
+  return { ...board, columns };
+};
 
 export const deleteCard = (board: BoardData, cardId: string): BoardData => ({
   ...board,

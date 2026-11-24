@@ -334,4 +334,105 @@ describe("KanbanBoard", () => {
       expect(within(screen.getByTestId("column-col-review")).queryByText("No matching cards")).not.toBeInTheDocument();
     });
   });
+
+  describe("columns", () => {
+    const columnTitles = () =>
+      screen.getAllByLabelText("Column title").map((input) => (input as HTMLInputElement).value);
+
+    it("adds a column at the end and saves it", async () => {
+      renderBoard();
+      await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+      await userEvent.type(screen.getByLabelText("New column title"), "  Blocked ");
+      await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+
+      expect(columnTitles()).toEqual(["Backlog", "Discovery", "In Progress", "Review", "Done", "Blocked"]);
+      const added = lastSaved().columns.at(-1)!;
+      expect(added.title).toBe("Blocked");
+      expect(added.cardIds).toEqual([]);
+      expect(added.id).toMatch(/^col-/);
+      expect(screen.getByRole("list", { name: "Columns" })).toHaveTextContent("Blocked");
+    });
+
+    it("does not add a column without a title, and can cancel", async () => {
+      renderBoard();
+      await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+      await userEvent.type(screen.getByLabelText("New column title"), "   ");
+      await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(columnTitles()).toHaveLength(5);
+      expect(savedBoards()).toHaveLength(0);
+    });
+
+    it("adds cards to a new column", async () => {
+      renderBoard();
+      await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+      await userEvent.type(screen.getByLabelText("New column title"), "Blocked");
+      await userEvent.click(screen.getByRole("button", { name: "Add column" }));
+
+      const blocked = screen.getAllByTestId(/^column-/).at(-1)!;
+      await userEvent.click(within(blocked).getByRole("button", { name: /add card/i }));
+      await userEvent.type(within(blocked).getByLabelText("Card title"), "Waiting on legal");
+      await userEvent.click(within(blocked).getByRole("button", { name: /add card/i }));
+
+      const saved = lastSaved();
+      const cardId = saved.columns.at(-1)!.cardIds[0];
+      expect(saved.cards[cardId].title).toBe("Waiting on legal");
+      // The sixth column repeats the first column's card color.
+      expect(within(blocked).getByTestId(`card-${cardId}`).style.backgroundColor).toBe("var(--card-backlog)");
+    });
+
+    it("moves columns left and right, and not past either end", async () => {
+      renderBoard();
+      expect(screen.getByRole("button", { name: "Move Backlog column left" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Move Done column right" })).toBeDisabled();
+
+      await userEvent.click(screen.getByRole("button", { name: "Move Review column left" }));
+      expect(columnTitles()).toEqual(["Backlog", "Discovery", "Review", "In Progress", "Done"]);
+      await userEvent.click(screen.getByRole("button", { name: "Move Backlog column right" }));
+      expect(columnTitles()).toEqual(["Discovery", "Backlog", "Review", "In Progress", "Done"]);
+      await waitFor(() => expect(savedBoards()).toHaveLength(2));
+      expect(lastSaved().columns.map((column) => column.id)).toEqual([
+        "col-discovery", "col-backlog", "col-review", "col-progress", "col-done",
+      ]);
+    });
+
+    it("colors cards by the column's position", async () => {
+      renderBoard();
+      await userEvent.click(screen.getByRole("button", { name: "Move Review column left" }));
+      expect(screen.getByTestId("card-card-6").style.backgroundColor).toBe("var(--card-progress)");
+    });
+
+    it("only deletes empty columns", async () => {
+      renderBoard();
+      const remove = screen.getByRole("button", { name: "Delete Review column" });
+      expect(remove).toBeDisabled();
+      expect(remove).toHaveAttribute("title", "Move or delete its cards first");
+
+      await userEvent.click(screen.getByRole("button", { name: "Delete QA micro-interactions" }));
+      expect(remove).toBeEnabled();
+      await userEvent.click(remove);
+      expect(columnTitles()).toEqual(["Backlog", "Discovery", "In Progress", "Done"]);
+      await waitFor(() => expect(lastSaved().columns).toHaveLength(4));
+    });
+
+    it("treats the last column as finished after reordering", async () => {
+      const board: BoardData = {
+        ...initialData,
+        cards: {
+          ...initialData.cards,
+          "card-7": { ...initialData.cards["card-7"], dueDate: "2020-01-01" },
+        },
+      };
+      render(<KanbanBoard boardId={1} initialBoard={board} initialVersion={1} />);
+      expect(within(screen.getByTestId("card-card-7")).getByText("Due Jan 1, 2020")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Move Done column left" }));
+      expect(within(screen.getByTestId("card-card-7")).getByText("Overdue Jan 1, 2020")).toBeInTheDocument();
+    });
+
+    it("names untitled columns in the control labels", () => {
+      const board: BoardData = { ...initialData, columns: [{ id: "col-x", title: "", cardIds: [] }], cards: {} };
+      render(<KanbanBoard boardId={1} initialBoard={board} initialVersion={1} />);
+      expect(screen.getByRole("button", { name: "Delete untitled column" })).toBeEnabled();
+    });
+  });
 });

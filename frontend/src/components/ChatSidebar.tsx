@@ -75,7 +75,7 @@ export const ChatSidebar = ({ boardId, onBoardUpdate }: ChatSidebarProps) => {
             AI Assistant
           </h2>
           <p className="mt-1 text-xs text-[var(--gray-text)]">
-            Ask me to create, edit, move or delete cards.
+            Ask me to create, edit, move or delete cards and columns.
           </p>
         </div>
         <button

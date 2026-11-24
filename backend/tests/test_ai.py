@@ -52,3 +52,13 @@ def test_live_chat_sets_priority_due_date_and_labels():
     assert card.dueDate.isoformat() == "2027-01-15"
     assert card.labels == ["qa"]
     assert card.title == "QA micro-interactions"
+
+
+def test_live_chat_adds_a_column_and_moves_a_card_into_it():
+    result = ai.chat(DEFAULT_BOARD, [], 'Add a column called "Blocked" after In Progress and move "Design card layout" into it.')
+    board, skipped = apply_operations(DEFAULT_BOARD, result.operations)
+    assert skipped == []
+    titles = [column.title for column in board.columns]
+    assert titles.index("Blocked") == titles.index("In Progress") + 1
+    blocked = board.columns[titles.index("Blocked")]
+    assert blocked.cardIds == ["card-5"]

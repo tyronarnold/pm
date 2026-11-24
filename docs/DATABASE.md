@@ -72,9 +72,10 @@ If no row is updated, someone else (another tab, or the AI chat) saved first. `P
 - Card order within a column is the order of `cardIds`.
 - `priority` (`low` / `medium` / `high`), `dueDate` (`YYYY-MM-DD`) and `labels` (up to 10, each 1-30 characters after trimming) are optional. They were added after boards were already stored, so cards without them are still valid and are read as `null`, `null` and `[]`; no data migration was needed.
 - Saving replaces the whole document (`PUT /api/boards/{id}`, and the AI chat after applying its operations).
-- The backend validates the shape with Pydantic models matching the schema, plus two checks the schema cannot express:
-  - every card id appears in exactly one column, and every id in `cardIds` has a card in `cards`
-  - the column ids match the stored board's column ids, in order (columns are fixed; only titles change)
+- The backend validates the shape with Pydantic models matching the schema, plus checks the schema cannot express:
+  - every card id appears in exactly one column, and every id in `cardIds` has a card in `cards` (so a column can only be removed once it is empty)
+  - column ids are unique, and no column has the same id as a card (drag and drop uses both as targets)
+- Columns are otherwise free: a board can have any number of columns in any order (Part 14; before that the five standard columns were fixed). The last column counts as finished work.
 
 ## Startup and new accounts
 

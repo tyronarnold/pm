@@ -214,3 +214,74 @@ def test_invalid_card_values_are_skipped():
     board, skipped = apply_operations(DEFAULT_BOARD, operations)
     assert board == DEFAULT_BOARD
     assert skipped == operations
+
+
+def titles(board: Board) -> list[str]:
+    return [c.title for c in board.columns]
+
+
+def test_create_column_at_the_end_and_at_a_position():
+    board, skipped = apply_operations(
+        DEFAULT_BOARD,
+        [op("create_column", title="Ideas"), op("create_column", title="Blocked", position=3)],
+    )
+    assert skipped == []
+    assert titles(board) == ["Backlog", "Discovery", "In Progress", "Blocked", "Review", "Done", "Ideas"]
+    new = board.columns[3]
+    assert new.id.startswith("col-") and new.cardIds == []
+    Board.model_validate(board.model_dump())
+
+
+def test_later_operations_can_use_a_new_columns_temporary_id():
+    board, skipped = apply_operations(
+        DEFAULT_BOARD,
+        [
+            op("create_column", column_id="new-col", title="Blocked"),
+            op("move_card", card_id="card-4", column_id="new-col"),
+            op("create_card", column_id="new-col", title="Waiting on legal"),
+            op("rename_column", column_id="new-col", title="On hold"),
+        ],
+    )
+    assert skipped == []
+    on_hold = board.columns[-1]
+    assert on_hold.title == "On hold" and on_hold.id != "new-col"
+    assert on_hold.cardIds[0] == "card-4"
+    assert board.cards[on_hold.cardIds[1]].title == "Waiting on legal"
+
+
+def test_temporary_column_id_matching_an_existing_column_does_not_replace_it():
+    board, _ = apply_operations(
+        DEFAULT_BOARD,
+        [op("create_column", column_id="col-done", title="New"), op("rename_column", column_id="col-done", title="X")],
+    )
+    assert titles(board) == ["Backlog", "Discovery", "In Progress", "Review", "Done", "X"]
+
+
+def test_rename_column():
+    board, skipped = apply_operations(DEFAULT_BOARD, [op("rename_column", column_id="col-review", title="QA")])
+    assert skipped == []
+    assert titles(board)[3] == "QA"
+
+
+def test_delete_an_empty_column():
+    board, skipped = apply_operations(
+        DEFAULT_BOARD,
+        [op("move_card", card_id="card-6", column_id="col-done"), op("delete_column", column_id="col-review")],
+    )
+    assert skipped == []
+    assert "Review" not in titles(board)
+    assert "card-6" in column(board, "col-done")
+
+
+def test_invalid_column_operations_are_skipped():
+    operations = [
+        op("create_column", title=""),
+        op("create_column"),
+        op("rename_column", column_id="col-nope", title="X"),
+        op("rename_column", column_id="col-done", title=""),
+        op("delete_column", column_id="col-nope"),
+        op("delete_column", column_id="col-done"),  # still has cards
+    ]
+    board, skipped = apply_operations(DEFAULT_BOARD, operations)
+    assert board == DEFAULT_BOARD
+    assert skipped == operations

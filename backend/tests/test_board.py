@@ -246,19 +246,42 @@ def test_card_key_must_match_id(signed_in, board_id):
     assert put(signed_in, board_id, board, 1).status_code == 422
 
 
-def test_changed_column_ids_rejected(signed_in, board_id):
-    board = default_board()
-    board["columns"][0]["id"] = "col-new"
-    assert put(signed_in, board_id, board, 1).status_code == 422
-
+def test_columns_can_be_added_renamed_reordered_and_removed(signed_in, board_id):
     board = default_board()
     board["columns"].reverse()
+    board["columns"][0]["title"] = "Shipped"
+    board["columns"].insert(2, {"id": "col-blocked", "title": "Blocked", "cardIds": []})
+    board["columns"].append({"id": "col-ideas", "title": "Ideas", "cardIds": []})
+    response = put(signed_in, board_id, board, 1)
+    assert response.status_code == 200
+    assert [c["title"] for c in response.json()["board"]["columns"]] == [
+        "Shipped", "Review", "Blocked", "In Progress", "Discovery", "Backlog", "Ideas"
+    ]
+
+    board["columns"] = [c for c in board["columns"] if c["id"] not in ("col-blocked", "col-review")]
+    del board["cards"]["card-6"]
+    assert put(signed_in, board_id, board, 2).status_code == 200
+
+
+def test_a_board_can_have_no_columns(signed_in, board_id):
+    assert put(signed_in, board_id, {"columns": [], "cards": {}}, 1).status_code == 200
+
+
+def test_removing_a_column_that_still_has_cards_is_rejected(signed_in, board_id):
+    board = default_board()
+    board["columns"].pop()  # card-7 and card-8 would be left without a column
     assert put(signed_in, board_id, board, 1).status_code == 422
 
+
+def test_duplicate_column_ids_rejected(signed_in, board_id):
     board = default_board()
-    board["columns"].pop()
-    board["cards"].pop("card-7")
-    board["cards"].pop("card-8")
+    board["columns"].append({"id": "col-done", "title": "Done again", "cardIds": []})
+    assert put(signed_in, board_id, board, 1).status_code == 422
+
+
+def test_a_column_id_cannot_be_a_card_id(signed_in, board_id):
+    board = default_board()
+    board["columns"].append({"id": "card-1", "title": "Confusing", "cardIds": []})
     assert put(signed_in, board_id, board, 1).status_code == 422
 
 

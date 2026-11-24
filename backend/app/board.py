@@ -37,6 +37,12 @@ class Board(BaseModel):
 
     @model_validator(mode="after")
     def check_cards(self):
+        column_ids = [column.id for column in self.columns]
+        if len(set(column_ids)) != len(column_ids):
+            raise ValueError("Column ids must be unique")
+        if set(column_ids) & set(self.cards):
+            # Drag and drop uses column and card ids as one set of targets.
+            raise ValueError("A column cannot have the same id as a card")
         placed = sorted(card_id for column in self.columns for card_id in column.cardIds)
         if placed != sorted(self.cards):
             raise ValueError("Every card must appear in exactly one column")
@@ -107,10 +113,6 @@ EMPTY_BOARD = Board(
 )
 
 
-def column_ids(board: Board) -> list[str]:
-    return [column.id for column in board.columns]
-
-
 class Operation(BaseModel):
     """A change to the board. Fields an operation does not use are null.
 
@@ -121,12 +123,18 @@ class Operation(BaseModel):
         (null = unchanged)
     move_card: card_id, column_id, position (null = end of column)
     delete_card: card_id
+    create_column: column_id (a temporary id, like card_id in create_card), title,
+        position (null = after the last column)
+    rename_column: column_id, title
+    delete_column: column_id (only an empty column)
 
     The model always sends every field (Structured Outputs), so the defaults only
     make operations shorter to write in code and tests.
     """
 
-    type: Literal["create_card", "edit_card", "move_card", "delete_card"]
+    type: Literal[
+        "create_card", "edit_card", "move_card", "delete_card", "create_column", "rename_column", "delete_column"
+    ]
     card_id: str | None = None
     column_id: str | None = None
     title: str | None = None
@@ -148,11 +156,11 @@ class Operation(BaseModel):
         return {name: value for name, value in fields.items() if value is not None}
 
 
-def _insert(card_ids: list[str], card_id: str, position: int | None) -> None:
+def _insert(items: list, item, position: int | None) -> None:
     if position is None:
-        card_ids.append(card_id)
+        items.append(item)
     else:
-        card_ids.insert(max(0, position), card_id)
+        items.insert(max(0, position), item)
 
 
 def _remove(board: Board, card_id: str) -> None:
@@ -160,6 +168,10 @@ def _remove(board: Board, card_id: str) -> None:
     for column in board.columns:
         if card_id in column.cardIds:
             column.cardIds.remove(card_id)
+
+
+def _new_id(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
 class Applied(NamedTuple):
@@ -175,55 +187,74 @@ def _build_card(fields: dict) -> Card | None:
         return None
 
 
-def apply_operations(board: Board, operations: list[Operation]) -> Applied:
-    """Return a new board with the operations applied in order, plus the skipped ones.
+class _NewIds(NamedTuple):
+    """Temporary ids given in create operations, mapped to the generated ids."""
 
-    New cards always get a generated id; the temporary card_id given in
-    create_card is mapped to it for the rest of the list. Operations that
-    reference unknown cards or columns, change nothing, or would leave a card
-    invalid (no title, a bad due date, too many labels) are skipped.
-    """
-    board = board.model_copy(deep=True)
-    columns = {column.id: column for column in board.columns}
-    new_ids: dict[str, str] = {}
-    skipped: list[Operation] = []
+    cards: dict[str, str]
+    columns: dict[str, str]
 
-    for op in operations:
-        if op.type == "create_card":
-            card_id = f"card-{uuid.uuid4().hex[:12]}"
-            card = _build_card({"details": "", **op.card_fields(), "id": card_id})
-            if op.column_id not in columns or card is None:
-                skipped.append(op)
-                continue
+
+def _apply(board: Board, op: Operation, new_ids: _NewIds) -> bool:
+    """Apply one operation to the board in place; False if it cannot be applied."""
+    column_id = new_ids.columns.get(op.column_id, op.column_id)
+    column = next((column for column in board.columns if column.id == column_id), None)
+    card_id = new_ids.cards.get(op.card_id, op.card_id)
+    card = board.cards.get(card_id)
+
+    match op.type:
+        case "create_card":
+            new_id = _new_id("card")
+            created = _build_card({"details": "", **op.card_fields(), "id": new_id})
+            if column is None or created is None:
+                return False
             if op.card_id:
-                new_ids[op.card_id] = card_id
-            board.cards[card_id] = card
-            _insert(columns[op.column_id].cardIds, card_id, op.position)
-            continue
-
-        card_id = new_ids.get(op.card_id, op.card_id)
-
-        if op.type == "edit_card":
-            card = board.cards.get(card_id)
+                new_ids.cards[op.card_id] = new_id
+            board.cards[new_id] = created
+            _insert(column.cardIds, new_id, op.position)
+        case "edit_card":
             changes = op.card_fields()
             edited = card and changes and _build_card({**card.model_dump(), **changes})
             if not edited:
-                skipped.append(op)
-                continue
+                return False
             board.cards[card_id] = edited
-
-        elif op.type == "move_card":
-            if card_id not in board.cards or op.column_id not in columns:
-                skipped.append(op)
-                continue
+        case "move_card":
+            if card is None or column is None:
+                return False
             _remove(board, card_id)
-            _insert(columns[op.column_id].cardIds, card_id, op.position)
-
-        elif op.type == "delete_card":
-            if card_id not in board.cards:
-                skipped.append(op)
-                continue
+            _insert(column.cardIds, card_id, op.position)
+        case "delete_card":
+            if card is None:
+                return False
             _remove(board, card_id)
             del board.cards[card_id]
+        case "create_column":
+            if not op.title:
+                return False
+            new_id = _new_id("col")
+            if op.column_id:
+                new_ids.columns[op.column_id] = new_id
+            _insert(board.columns, Column(id=new_id, title=op.title, cardIds=[]), op.position)
+        case "rename_column":
+            if column is None or not op.title:
+                return False
+            column.title = op.title
+        case "delete_column":
+            if column is None or column.cardIds:
+                return False
+            board.columns.remove(column)
+    return True
 
+
+def apply_operations(board: Board, operations: list[Operation]) -> Applied:
+    """Return a new board with the operations applied in order, plus the skipped ones.
+
+    New cards and columns always get a generated id; a temporary id given in
+    create_card or create_column is mapped to it for the rest of the list.
+    Operations that reference unknown cards or columns, change nothing, would
+    leave a card invalid (no title, a bad due date, too many labels), or delete
+    a column that still has cards are skipped.
+    """
+    board = board.model_copy(deep=True)
+    new_ids = _NewIds({}, {})
+    skipped = [op for op in operations if not _apply(board, op, new_ids)]
     return Applied(board, skipped)

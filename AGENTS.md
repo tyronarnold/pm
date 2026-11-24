@@ -6,7 +6,7 @@ This project is building a Project Management App. Key features:
 
 - A user can create an account, sign in, change their password and delete their account
 - A user has any number of Kanban boards, one per project, and can create, rename, switch between and delete them
-- The Kanban board has fixed columns that can be renamed
+- Each board's columns can be added, renamed, reordered and removed (when empty); the last column holds finished work
 - The cards on the Kanban board can be moved with drag and drop, and edited
 - There is an AI chat feature in a sidebar; the AI is able to create / edit / move one or more cards
 

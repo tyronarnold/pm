@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import ai, auth, db
-from app.board import DEFAULT_BOARD, EMPTY_BOARD, Board, apply_operations, column_ids
+from app.board import DEFAULT_BOARD, EMPTY_BOARD, Board, apply_operations
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
@@ -251,9 +251,6 @@ def delete_board(board_id: int, user: CurrentUser):
 )
 def save_board(board_id: int, update: VersionedBoard, user: CurrentUser) -> VersionedBoard:
     """Save the board if it is still at `update.version` (optimistic concurrency)."""
-    current = detail(find_board(user, board_id))
-    if column_ids(update.board) != column_ids(current.board):
-        raise HTTPException(status_code=422, detail="Columns cannot be added, removed or reordered")
     version = db.update_board(user.id, board_id, update.board.model_dump_json(), update.version)
     if version is None:
         current = detail(find_board(user, board_id))
@@ -281,7 +278,7 @@ def skipped_note(count: int) -> str:
     changes = "1 requested change" if count == 1 else f"{count} requested changes"
     return (
         f"\n\n(Note: {changes} could not be applied, because they referred to a card or column"
-        " that does not exist, had no title, or had an invalid value.)"
+        " that does not exist, had no title, had an invalid value, or was a column that still had cards.)"
     )
 
 

@@ -15,19 +15,23 @@ import { BoardFilters } from "@/components/BoardFilters";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { NewColumnForm } from "@/components/NewColumnForm";
 import { saveBoard } from "@/lib/api";
 import {
   addCard,
+  addColumn,
   boardLabels,
-  columnColors,
+  columnColor,
   createId,
   deleteCard,
+  deleteColumn,
   editCard,
   hasFilters,
   isOverdue,
   localToday,
   matchesFilters,
   moveCard,
+  moveColumn,
   noFilters,
   renameColumn,
   type BoardData,
@@ -137,8 +141,16 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
 
   const handleDeleteCard = (cardId: string) => update(deleteCard(board, cardId));
 
+  const handleAddColumn = (title: string) =>
+    update(addColumn(board, { id: createId("col"), title, cardIds: [] }));
+
+  const handleMoveColumn = (columnId: string, offset: number) =>
+    update(moveColumn(board, columnId, offset));
+
+  const handleDeleteColumn = (columnId: string) => update(deleteColumn(board, columnId));
+
   const activeCard = activeCardId ? cardsById[activeCardId] : null;
-  const activeColumn = board.columns.find((column) =>
+  const activeIndex = board.columns.findIndex((column) =>
     column.cardIds.includes(activeCardId ?? "")
   );
 
@@ -177,7 +189,8 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <section className="grid gap-6 lg:grid-cols-5">
+            {/* Columns share the width; past what fits, the row scrolls sideways. */}
+            <section className="flex flex-col gap-6 lg:flex-row lg:overflow-x-auto lg:pb-4">
               {board.columns.map((column, index) => (
                 <KanbanColumn
                   key={column.id}
@@ -186,6 +199,8 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
                     .map((cardId) => board.cards[cardId])
                     .filter((card) => matchesFilters(card, filters))}
                   filtering={hasFilters(filters)}
+                  color={columnColor(index)}
+                  isFirst={index === 0}
                   isLast={index === board.columns.length - 1}
                   today={today}
                   onRename={handleRenameColumn}
@@ -193,16 +208,19 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}
                   onEditCard={handleEditCard}
+                  onMove={handleMoveColumn}
+                  onDelete={handleDeleteColumn}
                 />
               ))}
+              <NewColumnForm onAdd={handleAddColumn} />
             </section>
             <DragOverlay>
-              {activeCard && activeColumn ? (
+              {activeCard && activeIndex !== -1 ? (
                 <div className="w-[260px]">
                   <KanbanCardPreview
                     card={activeCard}
-                    color={columnColors[activeColumn.id]}
-                    overdue={activeColumn !== board.columns.at(-1) && isOverdue(activeCard, today)}
+                    color={columnColor(activeIndex)}
+                    overdue={activeIndex !== board.columns.length - 1 && isOverdue(activeCard, today)}
                   />
                 </div>
               ) : null}

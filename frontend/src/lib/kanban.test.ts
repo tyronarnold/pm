@@ -1,7 +1,10 @@
 import {
   addCard,
+  addColumn,
   boardLabels,
+  columnColor,
   deleteCard,
+  deleteColumn,
   editCard,
   hasFilters,
   initialData,
@@ -9,6 +12,7 @@ import {
   localToday,
   matchesFilters,
   moveCard,
+  moveColumn,
   noFilters,
   parseLabels,
   renameColumn,
@@ -65,6 +69,33 @@ describe("board updates", () => {
     const board = editCard(initialData, "card-1", fields);
     expect(board.cards["card-1"]).toEqual({ ...fields, id: "card-1" });
     expect(board.cards["card-2"]).toBe(initialData.cards["card-2"]);
+  });
+
+  it("addColumn adds an empty column at the end", () => {
+    const board = addColumn(initialData, { id: "col-new", title: "Ideas", cardIds: [] });
+    expect(board.columns.map((column) => column.id)).toEqual([
+      ...initialData.columns.map((column) => column.id),
+      "col-new",
+    ]);
+    expect(board.cards).toBe(initialData.cards);
+  });
+
+  it("deleteColumn removes the column", () => {
+    const board = deleteColumn(initialData, "col-review");
+    expect(board.columns.map((column) => column.title)).toEqual(["Backlog", "Discovery", "In Progress", "Done"]);
+  });
+
+  it("moveColumn moves a column left or right, but not past either end", () => {
+    const titles = (board: typeof initialData) => board.columns.map((column) => column.title);
+    expect(titles(moveColumn(initialData, "col-review", -1))).toEqual([
+      "Backlog", "Discovery", "Review", "In Progress", "Done",
+    ]);
+    expect(titles(moveColumn(initialData, "col-backlog", 1))).toEqual([
+      "Discovery", "Backlog", "In Progress", "Review", "Done",
+    ]);
+    expect(moveColumn(initialData, "col-backlog", -1)).toBe(initialData);
+    expect(moveColumn(initialData, "col-done", 1)).toBe(initialData);
+    expect(moveColumn(initialData, "col-nope", 1)).toBe(initialData);
   });
 
   it("deleteCard removes the card and its place in the column", () => {
@@ -142,5 +173,13 @@ describe("filters", () => {
     expect(matchesFilters(card, { ...noFilters, label: "doc" })).toBe(false);
     expect(matchesFilters(card, { text: "release", priority: "high", label: "ux" })).toBe(false);
     expect(hasFilters({ ...noFilters, label: "docs" })).toBe(true);
+  });
+});
+
+describe("columnColor", () => {
+  it("gives the standard columns their colors and repeats after five", () => {
+    expect(columnColor(0)).toBe("var(--card-backlog)");
+    expect(columnColor(4)).toBe("var(--card-done)");
+    expect(columnColor(5)).toBe("var(--card-backlog)");
   });
 });

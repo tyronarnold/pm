@@ -10,7 +10,7 @@
   "additionalProperties": false,
   "properties": {
     "columns": {
-      "description": "Fixed set of columns, in display order. Only titles change.",
+      "description": "Columns in display order (left to right); the last one holds finished work. Ids are unique and never equal a card id.",
       "type": "array",
       "items": {
         "type": "object",
