@@ -266,4 +266,5 @@ From the self-review in `docs/tutorial.md`, section 7:
   - Checked on the real app: the existing database was upgraded, `user` / `password` still signs in, and the board was unchanged
 
 Notes for working on the project:
+- ESLint stays on 10 (9 is no longer supported) with npm `overrides` for the ESLint peer of eslint-config-next's react, import and jsx-a11y plugins, whose latest releases still declare up to ESLint 9. This removes the `npm ci` peer warnings; see `frontend/AGENTS.md` for the two eslint-plugin-react rules that do not work on ESLint 10
 - On Windows, run Vitest from an uppercase `C:\` path (PowerShell or cmd); Git Bash's lowercase `c:\` loads Vitest twice and breaks the jest-dom matchers
