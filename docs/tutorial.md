@@ -108,7 +108,7 @@ docs/                 the plan, database design, this tutorial
 
 ### 3.3 How it was built, step by step
 
-The work followed a written plan (`docs/PLAN.md`) split into ten parts. Each part had a checklist, tests and success criteria, and the next part only started after the previous one was checked by hand. This is a good habit for any project: small steps, each one working and tested before moving on.
+The work followed a written plan (`docs/PLAN.md`) split into eleven parts, followed by a set of follow-ups. Each part had a checklist, tests and success criteria, and the next part only started after the previous one was checked by hand. This is a good habit for any project: small steps, each one working and tested before moving on.
 
 | Part | What happened |
 |---|---|
@@ -122,8 +122,8 @@ The work followed a written plan (`docs/PLAN.md`) split into ten parts. Each par
 | 8. AI connectivity | A first "What is 2+2?" call to OpenRouter |
 | 9. AI board changes | `/api/chat` with Structured Outputs and board operations |
 | 10. Chat sidebar | The chat UI, plus a bug fix the browser tests uncovered |
-
-After that came a visual refresh (column colors, hover effects), and delete support for the AI.
+| 11. Changes after the MVP | A visual refresh (column colors, hover effects), and delete support for the AI |
+| Follow-ups | The five improvements from the self-review in section 7 |
 
 ### 3.4 Following one request end to end
 
@@ -150,7 +150,9 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.15-slim
+# The backend on its own. `npm run api:types` builds only this stage (--target backend)
+# to write openapi.json, so frontend type errors cannot block regenerating the types.
+FROM python:3.15-slim AS backend
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.9 /uv /uvx /bin/
 
@@ -160,6 +162,11 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen
 
 COPY backend/ ./
+# Filled with the frontend in the final stage; empty here so the app can start without it.
+RUN mkdir -p static
+
+FROM backend
+
 COPY --from=frontend /frontend/out ./static
 
 EXPOSE 8000
@@ -169,7 +176,8 @@ CMD ["uv", "run", "--no-sync", "uvicorn", "app.main:app", "--host", "0.0.0.0", "
 This is a **multi-stage build**:
 
 - **Stage 1** (`frontend`) uses a Node image to run `npm ci` and `npm run build`, producing `/frontend/out`.
-- **Stage 2** starts from a clean Python image, installs the Python packages, and copies in only the built files from stage 1 (`COPY --from=frontend ...`). Node and `node_modules` never make it into the final image, so it stays small.
+- **Stage 2** (`backend`) starts from a clean Python image and installs the Python packages and the backend code. It can be built on its own (`docker build --target backend`), which the type generator in self-review suggestion 4 uses.
+- **Stage 3** builds on stage 2 and copies in only the built files from stage 1 (`COPY --from=frontend ...`). Node and `node_modules` never make it into the final image, so it stays small.
 
 Notice the order: `package.json` and the lockfile are copied and installed *before* the rest of the code. Docker caches each step, so if you only change a component, Docker reuses the cached `npm ci` step and the rebuild is much faster.
 

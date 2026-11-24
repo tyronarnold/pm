@@ -46,7 +46,7 @@ If no row is updated, someone else (another tab, or the AI chat) saved first. `P
 
 ## Board JSON
 
-`boards.data` holds the whole board as one JSON document, in the same shape the frontend uses (`BoardData` in `frontend/src/lib/kanban.ts`). The schema is in [board.schema.json](board.schema.json).
+`boards.data` holds the whole board as one JSON document, in the shape defined by the `Board` model in `backend/app/board.py`. The frontend's `BoardData` type (`frontend/src/lib/kanban.ts`) is generated from that model (see `npm run api:types`). The schema is in [board.schema.json](board.schema.json).
 
 ```json
 {

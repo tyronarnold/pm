@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Board",
-  "description": "A user's Kanban board, stored as JSON in boards.data. Same shape as BoardData in frontend/src/lib/kanban.ts.",
+  "description": "A user's Kanban board, stored as JSON in boards.data. Same shape as the Board model in backend/app/board.py, from which the frontend's BoardData type is generated.",
   "type": "object",
   "required": ["columns", "cards"],
   "additionalProperties": false,
