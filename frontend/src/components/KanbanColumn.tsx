@@ -1,23 +1,30 @@
 import clsx from "clsx";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { columnColors, type Card, type Column } from "@/lib/kanban";
+import { columnColors, isOverdue, type Card, type CardFields, type Column } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
 
 type KanbanColumnProps = {
   column: Column;
-  cards: Card[];
+  cards: Card[]; // the cards that match the filters
+  filtering: boolean;
+  // Cards in the last column are finished, so they are never shown as overdue.
+  isLast: boolean;
+  today: string;
   onRename: (columnId: string, title: string) => void;
   onRenameDone: () => void;
-  onAddCard: (columnId: string, title: string, details: string) => void;
+  onAddCard: (columnId: string, fields: CardFields) => void;
   onDeleteCard: (cardId: string) => void;
-  onEditCard: (cardId: string, title: string, details: string) => void;
+  onEditCard: (cardId: string, fields: CardFields) => void;
 };
 
 export const KanbanColumn = ({
   column,
   cards,
+  filtering,
+  isLast,
+  today,
   onRename,
   onRenameDone,
   onAddCard,
@@ -48,18 +55,21 @@ export const KanbanColumn = ({
         />
         <span
           className="rounded-full bg-[var(--badge)] px-2.5 py-0.5 text-xs font-semibold text-[var(--gray-text)]"
-          aria-label={`${cards.length} cards`}
+          aria-label={
+            filtering ? `${cards.length} of ${column.cardIds.length} cards` : `${cards.length} cards`
+          }
         >
-          {cards.length}
+          {filtering ? `${cards.length}/${column.cardIds.length}` : cards.length}
         </span>
       </div>
       <div className="mt-5 flex flex-1 flex-col gap-4">
-        <SortableContext items={column.cardIds} strategy={verticalListSortingStrategy}>
+        <SortableContext items={cards.map((card) => card.id)} strategy={verticalListSortingStrategy}>
           {cards.map((card) => (
             <KanbanCard
               key={card.id}
               card={card}
               color={columnColors[column.id]}
+              overdue={!isLast && isOverdue(card, today)}
               onDelete={onDeleteCard}
               onEdit={onEditCard}
             />
@@ -67,12 +77,12 @@ export const KanbanColumn = ({
         </SortableContext>
         {cards.length === 0 && (
           <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-[var(--badge)] px-3 py-6 text-center text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
-            Drop a card here
+            {filtering && column.cardIds.length > 0 ? "No matching cards" : "Drop a card here"}
           </div>
         )}
       </div>
       <NewCardForm
-        onAdd={(title, details) => onAddCard(column.id, title, details)}
+        onAdd={(fields) => onAddCard(column.id, fields)}
       />
     </section>
   );

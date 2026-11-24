@@ -1,10 +1,18 @@
 import {
   addCard,
+  boardLabels,
   deleteCard,
   editCard,
+  hasFilters,
   initialData,
+  isOverdue,
+  localToday,
+  matchesFilters,
   moveCard,
+  noFilters,
+  parseLabels,
   renameColumn,
+  type Card,
   type Column,
 } from "@/lib/kanban";
 
@@ -46,20 +54,93 @@ describe("board updates", () => {
   });
 
   it("addCard adds the card at the bottom of the column", () => {
-    const card = { id: "card-new", title: "New", details: "" };
+    const card = { id: "card-new", title: "New", details: "", labels: [] };
     const board = addCard(initialData, "col-discovery", card);
     expect(board.cards["card-new"]).toEqual(card);
     expect(board.columns[1].cardIds).toEqual(["card-3", "card-new"]);
   });
 
-  it("editCard replaces the title and details", () => {
-    const board = editCard(initialData, "card-1", "Edited", "New details");
-    expect(board.cards["card-1"]).toEqual({ id: "card-1", title: "Edited", details: "New details" });
+  it("editCard replaces the card's fields and keeps its id", () => {
+    const fields = { title: "Edited", details: "New details", priority: "high" as const, dueDate: "2026-12-01", labels: ["a"] };
+    const board = editCard(initialData, "card-1", fields);
+    expect(board.cards["card-1"]).toEqual({ ...fields, id: "card-1" });
+    expect(board.cards["card-2"]).toBe(initialData.cards["card-2"]);
   });
 
   it("deleteCard removes the card and its place in the column", () => {
     const board = deleteCard(initialData, "card-4");
     expect(board.cards["card-4"]).toBeUndefined();
     expect(board.columns[2].cardIds).toEqual(["card-5"]);
+  });
+});
+
+describe("labels", () => {
+  it("parseLabels trims, drops empty and repeated labels", () => {
+    expect(parseLabels(" design, ,api,design ,")).toEqual(["design", "api"]);
+    expect(parseLabels("")).toEqual([]);
+  });
+
+  it("parseLabels keeps within the backend's limits", () => {
+    expect(parseLabels(Array.from({ length: 12 }, (_, i) => `l${i}`).join(","))).toHaveLength(10);
+    expect(parseLabels("x".repeat(40))).toEqual(["x".repeat(30)]);
+  });
+
+  it("boardLabels lists every label once, sorted", () => {
+    const board = {
+      ...initialData,
+      cards: {
+        ...initialData.cards,
+        "card-1": { ...initialData.cards["card-1"], labels: ["ux", "api"] },
+        "card-2": { ...initialData.cards["card-2"], labels: ["api"] },
+      },
+    };
+    expect(boardLabels(board)).toEqual(["api", "ux"]);
+    expect(boardLabels(initialData)).toEqual([]);
+  });
+});
+
+describe("dates", () => {
+  it("localToday formats the local date as YYYY-MM-DD", () => {
+    expect(localToday(new Date(2026, 0, 5, 23, 30))).toBe("2026-01-05");
+  });
+
+  it("isOverdue is true only for due dates before today", () => {
+    const card = (dueDate: string | null): Card => ({ ...initialData.cards["card-1"], dueDate });
+    expect(isOverdue(card("2026-11-23"), "2026-11-24")).toBe(true);
+    expect(isOverdue(card("2026-11-24"), "2026-11-24")).toBe(false);
+    expect(isOverdue(card(null), "2026-11-24")).toBe(false);
+  });
+});
+
+describe("filters", () => {
+  const card: Card = {
+    id: "card-x",
+    title: "Write release notes",
+    details: "For the December launch",
+    priority: "high",
+    dueDate: null,
+    labels: ["docs"],
+  };
+
+  it("matches everything without filters", () => {
+    expect(matchesFilters(card, noFilters)).toBe(true);
+    expect(hasFilters(noFilters)).toBe(false);
+    expect(hasFilters({ ...noFilters, text: "  " })).toBe(false);
+  });
+
+  it("matches text in the title, details or labels, ignoring case", () => {
+    expect(matchesFilters(card, { ...noFilters, text: "RELEASE" })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, text: "december" })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, text: " docs " })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, text: "budget" })).toBe(false);
+  });
+
+  it("matches priority and label exactly, combined with the text", () => {
+    expect(matchesFilters(card, { ...noFilters, priority: "high" })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, priority: "low" })).toBe(false);
+    expect(matchesFilters(card, { ...noFilters, label: "docs" })).toBe(true);
+    expect(matchesFilters(card, { ...noFilters, label: "doc" })).toBe(false);
+    expect(matchesFilters(card, { text: "release", priority: "high", label: "ux" })).toBe(false);
+    expect(hasFilters({ ...noFilters, label: "docs" })).toBe(true);
   });
 });

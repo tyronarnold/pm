@@ -21,6 +21,9 @@
   --card-progress: #c8bfe3;
   --card-review: #f8d597;
   --card-done: #b6e8c3;
+  --priority-high: #ba001d;
+  --priority-medium: #ecad0a;
+  --priority-low: #888888;
 }
 
 @theme inline {

@@ -104,7 +104,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change Password */
+        /**
+         * Change Password
+         * @description Change the password. Other sessions are signed out; this one stays signed in.
+         */
         put: operations["change_password_api_me_password_put"];
         post?: never;
         delete?: never;
@@ -216,7 +219,10 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
-        /** Card */
+        /**
+         * Card
+         * @description A card. Priority, due date and labels are optional, so boards saved before they existed stay valid.
+         */
         Card: {
             /** Id */
             id: string;
@@ -224,6 +230,15 @@ export interface components {
             title: string;
             /** Details */
             details: string;
+            /** Priority */
+            priority?: ("low" | "medium" | "high") | null;
+            /** Duedate */
+            dueDate?: string | null;
+            /**
+             * Labels
+             * @default []
+             */
+            labels: string[];
         };
         /** ChatMessage */
         ChatMessage: {

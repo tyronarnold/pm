@@ -278,13 +278,13 @@ The user asked to "significantly improve this project: user management, multiple
 Roadmap (one part per working session; check off as done):
 
 - [x] Part 12: Accounts and multiple boards
-- [ ] Part 13: Richer cards (priority, due date, labels) and board search / filter
+- [x] Part 13: Richer cards (priority, due date, labels) and board search / filter
 - [ ] Part 14: Editable columns (add, rename, remove, reorder) per board
 - [ ] Part 15: Board sharing with other users (members can view and edit)
 - [ ] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
-- [ ] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header
+- [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
 
 ### Part 12: Accounts and multiple boards
 
@@ -310,3 +310,23 @@ Notes:
 - Board e2e tests register their own account, so they do not depend on or disturb the shared `user` boards
 - Checked on the real app: the existing database (one board at version 48, 10 cards) was upgraded in place; the board kept its id, version and cards and is named "My board". A backup was taken first
 - Results: 101 backend tests (including live), 58 Vitest, 26 Playwright, all passing
+
+### Part 13: Richer cards and search / filter
+
+Decisions:
+- Cards get three optional fields: `priority` (`low` / `medium` / `high` or null), `dueDate` (`YYYY-MM-DD` or null) and `labels` (up to 10 tags of 1-30 characters, trimmed). They have defaults in the `Card` model, so stored boards stay valid without a data migration. JSON names follow the board's camelCase (`dueDate`, like `cardIds`)
+- FastAPI uses one schema per model for requests and responses (`separate_input_output_schemas=False`), so the generated TypeScript `Card` type has `priority` and `dueDate` optional; openapi-typescript makes `labels` (default `[]`) required, which matches what the server always returns
+- The AI can set the new fields on `create_card` and `edit_card` (`priority`, `due_date`, `labels`; null = unchanged). New and edited cards are built with `Card.model_validate`, so the AI's values get the same checks as a saved board and invalid ones are skipped and counted in the reply note. The AI is told today's date so it can turn "next Friday" into a date
+- Overdue: a due date before today (in the user's time zone), except for cards in the board's last column, which counts as finished
+- Search and filters are frontend only and not saved: text (title, details or labels, ignoring case), priority, label. Columns show "matching/total" counts while filtering. Dragging still works on the cards shown
+- One `CardForm` component serves adding and editing, so both have every field
+- Follow-up from Part 12: `users.session_version` is stored in the session cookie; changing the password increments it, which signs out other sessions while the current session gets the new value. Sessions from before this change sign in once more
+- Screenshot retaken from a throwaway container (no volume), so it shows demo data only
+
+Checklist:
+- [x] Backend: card fields, operations, AI prompt with today's date, session version
+- [x] Frontend: card form fields, card badges, overdue, search and filters
+- [x] Tests: pytest (fields, validation, older boards, operations, live AI setting the fields, password change signing out other sessions), Vitest (helpers, form, badges, filters), Playwright (fields, filters, reload)
+- [x] Docs and screenshot
+
+Results: 117 backend tests (including live), 73 Vitest, 27 Playwright, all passing.

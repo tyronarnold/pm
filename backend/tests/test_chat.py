@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from types import SimpleNamespace
 
 import httpx2
@@ -195,7 +196,8 @@ def test_request_includes_board_history_and_message(chat, fake_ai):
     messages = request["messages"]
     assert messages[0] == {"role": "system", "content": ai.SYSTEM_PROMPT}
     assert messages[1]["role"] == "system"
-    board_json = messages[1]["content"].split("\n", 1)[1]
+    assert messages[1]["content"].startswith(f"Today is {date.today().isoformat()}.")
+    board_json = messages[1]["content"].split(ai.BOARD_HEADING, 1)[1]
     assert Board.model_validate(json.loads(board_json)) == DEFAULT_BOARD
     assert messages[2:] == [*history, {"role": "user", "content": "Add a card"}]
 
@@ -216,7 +218,7 @@ def test_chat_uses_and_saves_the_board_in_the_url(signed_in, board_id, fake_ai):
     fake = fake_ai(operations=[create])
     body = signed_in.post(f"/api/boards/{other['id']}/chat", json={"message": "Add it"}).json()
 
-    shown = json.loads(fake.requests[0]["messages"][1]["content"].split("\n", 1)[1])
+    shown = json.loads(fake.requests[0]["messages"][1]["content"].split(ai.BOARD_HEADING, 1)[1])
     assert shown["cards"] == {}  # the AI was shown the empty board, not the first one
     assert [card["title"] for card in body["board"]["cards"].values()] == ["Only here"]
     assert saved_board() == DEFAULT_BOARD  # the first board is untouched

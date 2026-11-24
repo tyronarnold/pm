@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
+    session_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -42,6 +43,9 @@ COMMIT;
 class User(NamedTuple):
     id: int
     username: str
+    # Stored in the session cookie at sign-in; changing the password increments it,
+    # which signs out every other session.
+    session_version: int
 
 
 class BoardRow(NamedTuple):
@@ -68,8 +72,11 @@ def init_db() -> None:
     """Create the tables if missing, and upgrade databases made by earlier versions."""
     with closing(connect()) as conn:
         conn.executescript(USERS_SCHEMA)
-        if "password_hash" not in _columns(conn, "users"):
+        users = _columns(conn, "users")
+        if "password_hash" not in users:
             conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        if "session_version" not in users:
+            conn.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
         old_boards = _columns(conn, "boards")
         if old_boards and "name" not in old_boards:
             if "version" not in old_boards:
@@ -103,7 +110,9 @@ def ensure_password(username: str, password_hash: str) -> None:
 
 def get_user(user_id: int) -> User | None:
     with closing(connect()) as conn:
-        row = conn.execute("SELECT id, username FROM users WHERE id = ?", (user_id,)).fetchone()
+        row = conn.execute(
+            "SELECT id, username, session_version FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
     return User(*row) if row else None
 
 
@@ -111,9 +120,10 @@ def find_user(username: str) -> tuple[User, str | None] | None:
     """The user and their password hash, or None if there is no such user."""
     with closing(connect()) as conn:
         row = conn.execute(
-            "SELECT id, username, password_hash FROM users WHERE username = ?", (username,)
+            "SELECT id, username, session_version, password_hash FROM users WHERE username = ?",
+            (username,),
         ).fetchone()
-    return (User(row[0], row[1]), row[2]) if row else None
+    return (User(*row[:3]), row[3]) if row else None
 
 
 def get_password_hash(user_id: int) -> str | None:
@@ -122,9 +132,14 @@ def get_password_hash(user_id: int) -> str | None:
     return row[0] if row else None
 
 
-def set_password_hash(user_id: int, password_hash: str) -> None:
+def set_password_hash(user_id: int, password_hash: str) -> int:
+    """Set a new password hash and return the user's new session version."""
     with closing(connect()) as conn:
-        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+        return conn.execute(
+            "UPDATE users SET password_hash = ?, session_version = session_version + 1 WHERE id = ?"
+            " RETURNING session_version",
+            (password_hash, user_id),
+        ).fetchone()[0]
 
 
 def delete_user(user_id: int) -> None:

@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import date
 from typing import Literal
 
 import openai
@@ -18,12 +19,15 @@ SYSTEM_PROMPT = """You are the assistant inside a Kanban project management app.
 You help the user plan and manage the cards on their board.
 
 The board has a fixed set of columns (you cannot add, remove or rename them). \
-Each column lists its cards in order, top to bottom. Each card has a title and details.
+Each column lists its cards in order, top to bottom. Each card has a title and details, and optionally \
+a priority ("low", "medium" or "high"), a due date (dueDate, YYYY-MM-DD) and labels (short tags).
 
 To change the board, return operations. Allowed operations:
 - create_card: card_id (a temporary id you choose, such as "new-1"; later operations in the same reply \
-can use it to edit or move the new card), column_id, title, details (may be empty), position (0 = top, null = bottom).
-- edit_card: card_id, plus the new title and/or details. Use null for a field that should not change.
+can use it to edit or move the new card), column_id, title, details (may be empty), position (0 = top, null = bottom), \
+and optionally priority, due_date (YYYY-MM-DD) and labels (a list of short tags).
+- edit_card: card_id, plus any of title, details, priority, due_date and labels to change. \
+Use null for a field that should not change. labels replaces the card's whole list of labels.
 - move_card: card_id, column_id (the destination; may be the same column to reorder), position (0 = top, null = bottom).
 - delete_card: card_id. Only delete cards the user clearly asked you to delete; if it is unclear which card \
 they mean, ask instead of deleting.
@@ -65,10 +69,15 @@ def ask(messages: list[dict]) -> str:
     return response.choices[0].message.content
 
 
+BOARD_HEADING = "Current board JSON:\n"
+
+
 def build_messages(board: Board, history: list[ChatMessage], message: str) -> list[dict]:
+    """The system prompt, today's date (for due dates) and the board, then the conversation."""
+    context = f"Today is {date.today().isoformat()}.\n{BOARD_HEADING}{board.model_dump_json()}"
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "system", "content": f"Current board JSON:\n{board.model_dump_json()}"},
+        {"role": "system", "content": context},
         *(m.model_dump() for m in history),
         {"role": "user", "content": message},
     ]

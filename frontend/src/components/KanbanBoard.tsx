@@ -11,19 +11,27 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { BoardFilters } from "@/components/BoardFilters";
 import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { saveBoard } from "@/lib/api";
 import {
   addCard,
+  boardLabels,
   columnColors,
   createId,
   deleteCard,
   editCard,
+  hasFilters,
+  isOverdue,
+  localToday,
+  matchesFilters,
   moveCard,
+  noFilters,
   renameColumn,
   type BoardData,
+  type CardFields,
 } from "@/lib/kanban";
 
 type KanbanBoardProps = {
@@ -38,6 +46,8 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
   const [board, setBoard] = useState<BoardData>(initialBoard);
   const [notice, setNotice] = useState<Notice>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [filters, setFilters] = useState(noFilters);
+  const today = localToday();
   const dndContextId = useId();
 
   // Saving state lives in refs: it changes during async work and never affects rendering.
@@ -119,11 +129,11 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
   const handleRenameColumn = (columnId: string, title: string) =>
     setBoard(renameColumn(board, columnId, title));
 
-  const handleAddCard = (columnId: string, title: string, details: string) =>
-    update(addCard(board, columnId, { id: createId("card"), title, details }));
+  const handleAddCard = (columnId: string, fields: CardFields) =>
+    update(addCard(board, columnId, { ...fields, id: createId("card") }));
 
-  const handleEditCard = (cardId: string, title: string, details: string) =>
-    update(editCard(board, cardId, title, details));
+  const handleEditCard = (cardId: string, fields: CardFields) =>
+    update(editCard(board, cardId, fields));
 
   const handleDeleteCard = (cardId: string) => update(deleteCard(board, cardId));
 
@@ -145,6 +155,7 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
           </li>
         ))}
       </ul>
+      <BoardFilters filters={filters} labels={boardLabels(board)} onChange={setFilters} />
       {notice === "save-failed" && (
         <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
           Could not save your changes. Check that the server is running and try again.
@@ -167,11 +178,16 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
             onDragEnd={handleDragEnd}
           >
             <section className="grid gap-6 lg:grid-cols-5">
-              {board.columns.map((column) => (
+              {board.columns.map((column, index) => (
                 <KanbanColumn
                   key={column.id}
                   column={column}
-                  cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  cards={column.cardIds
+                    .map((cardId) => board.cards[cardId])
+                    .filter((card) => matchesFilters(card, filters))}
+                  filtering={hasFilters(filters)}
+                  isLast={index === board.columns.length - 1}
+                  today={today}
                   onRename={handleRenameColumn}
                   onRenameDone={() => persist(board)}
                   onAddCard={handleAddCard}
@@ -183,7 +199,11 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoa
             <DragOverlay>
               {activeCard && activeColumn ? (
                 <div className="w-[260px]">
-                  <KanbanCardPreview card={activeCard} color={columnColors[activeColumn.id]} />
+                  <KanbanCardPreview
+                    card={activeCard}
+                    color={columnColors[activeColumn.id]}
+                    overdue={activeColumn !== board.columns.at(-1) && isOverdue(activeCard, today)}
+                  />
                 </div>
               ) : null}
             </DragOverlay>

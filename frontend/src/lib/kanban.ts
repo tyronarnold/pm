@@ -4,6 +4,11 @@ import type { components } from "@/lib/api-types";
 export type Card = components["schemas"]["Card"];
 export type Column = components["schemas"]["Column"];
 export type BoardData = components["schemas"]["Board"];
+// Everything about a card except its id: what the card forms edit.
+export type CardFields = Omit<Card, "id">;
+export type Priority = NonNullable<Card["priority"]>;
+
+export const priorities: Priority[] = ["high", "medium", "low"];
 
 // Card background per column (the column set is fixed).
 export const columnColors: Record<string, string> = {
@@ -14,6 +19,16 @@ export const columnColors: Record<string, string> = {
   "col-done": "var(--card-done)",
 };
 
+const sampleCard = (id: string, title: string, details: string): Card => ({
+  id,
+  title,
+  details,
+  priority: null,
+  dueDate: null,
+  labels: [],
+});
+
+// The same board the backend gives a new account (as the server returns it).
 export const initialData: BoardData = {
   columns: [
     { id: "col-backlog", title: "Backlog", cardIds: ["card-1", "card-2"] },
@@ -27,46 +42,14 @@ export const initialData: BoardData = {
     { id: "col-done", title: "Done", cardIds: ["card-7", "card-8"] },
   ],
   cards: {
-    "card-1": {
-      id: "card-1",
-      title: "Align roadmap themes",
-      details: "Draft quarterly themes with impact statements and metrics.",
-    },
-    "card-2": {
-      id: "card-2",
-      title: "Gather customer signals",
-      details: "Review support tags, sales notes, and churn feedback.",
-    },
-    "card-3": {
-      id: "card-3",
-      title: "Prototype analytics view",
-      details: "Sketch initial dashboard layout and key drill-downs.",
-    },
-    "card-4": {
-      id: "card-4",
-      title: "Refine status language",
-      details: "Standardize column labels and tone across the board.",
-    },
-    "card-5": {
-      id: "card-5",
-      title: "Design card layout",
-      details: "Add hierarchy and spacing for scanning dense lists.",
-    },
-    "card-6": {
-      id: "card-6",
-      title: "QA micro-interactions",
-      details: "Verify hover, focus, and loading states.",
-    },
-    "card-7": {
-      id: "card-7",
-      title: "Ship marketing page",
-      details: "Final copy approved and asset pack delivered.",
-    },
-    "card-8": {
-      id: "card-8",
-      title: "Close onboarding sprint",
-      details: "Document release notes and share internally.",
-    },
+    "card-1": sampleCard("card-1", "Align roadmap themes", "Draft quarterly themes with impact statements and metrics."),
+    "card-2": sampleCard("card-2", "Gather customer signals", "Review support tags, sales notes, and churn feedback."),
+    "card-3": sampleCard("card-3", "Prototype analytics view", "Sketch initial dashboard layout and key drill-downs."),
+    "card-4": sampleCard("card-4", "Refine status language", "Standardize column labels and tone across the board."),
+    "card-5": sampleCard("card-5", "Design card layout", "Add hierarchy and spacing for scanning dense lists."),
+    "card-6": sampleCard("card-6", "QA micro-interactions", "Verify hover, focus, and loading states."),
+    "card-7": sampleCard("card-7", "Ship marketing page", "Final copy approved and asset pack delivered."),
+    "card-8": sampleCard("card-8", "Close onboarding sprint", "Document release notes and share internally."),
   },
 };
 
@@ -178,14 +161,9 @@ export const addCard = (board: BoardData, columnId: string, card: Card): BoardDa
   ),
 });
 
-export const editCard = (
-  board: BoardData,
-  cardId: string,
-  title: string,
-  details: string
-): BoardData => ({
+export const editCard = (board: BoardData, cardId: string, fields: CardFields): BoardData => ({
   ...board,
-  cards: { ...board.cards, [cardId]: { id: cardId, title, details } },
+  cards: { ...board.cards, [cardId]: { ...fields, id: cardId } },
 });
 
 export const deleteCard = (board: BoardData, cardId: string): BoardData => ({
@@ -201,4 +179,45 @@ export const createId = (prefix: string) => {
   const randomPart = Math.random().toString(36).slice(2, 8);
   const timePart = Date.now().toString(36);
   return `${prefix}-${randomPart}${timePart}`;
+};
+
+// The backend's limits for labels.
+export const MAX_LABELS = 10;
+export const MAX_LABEL_LENGTH = 30;
+
+// "a, b ,, a" -> ["a", "b"]: trimmed, no empty or repeated labels, within the backend's limits.
+export const parseLabels = (text: string): string[] =>
+  [
+    ...new Set(
+      text
+        .split(",")
+        .map((label) => label.trim().slice(0, MAX_LABEL_LENGTH).trim())
+        .filter(Boolean)
+    ),
+  ].slice(0, MAX_LABELS);
+
+// Every label used on the board, sorted.
+export const boardLabels = (board: BoardData): string[] =>
+  [...new Set(Object.values(board.cards).flatMap((card) => card.labels))].sort();
+
+// Today as YYYY-MM-DD in the user's time zone, the format of `dueDate`.
+export const localToday = (now = new Date()) =>
+  `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+// ISO dates compare correctly as strings.
+export const isOverdue = (card: Card, today: string) => Boolean(card.dueDate && card.dueDate < today);
+
+export type Filters = { text: string; priority: Priority | ""; label: string };
+
+export const noFilters: Filters = { text: "", priority: "", label: "" };
+
+export const hasFilters = ({ text, priority, label }: Filters) => text.trim() !== "" || priority !== "" || label !== "";
+
+// Text matches the title, details or a label, ignoring case.
+export const matchesFilters = (card: Card, { text, priority, label }: Filters) => {
+  const query = text.trim().toLowerCase();
+  const matchesText =
+    !query ||
+    [card.title, card.details, ...card.labels].some((value) => value.toLowerCase().includes(query));
+  return matchesText && (!priority || card.priority === priority) && (!label || card.labels.includes(label));
 };

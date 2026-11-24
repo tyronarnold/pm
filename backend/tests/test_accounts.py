@@ -121,3 +121,15 @@ def test_the_username_can_be_registered_again_after_deletion(client):
     client.request("DELETE", "/api/me", json={"password": "alice-password"})
     assert register(client, password="fresh-password").status_code == 201
     assert len(client.get("/api/boards").json()) == 1
+
+
+def test_changing_the_password_signs_out_other_sessions_but_not_this_one(client):
+    register(client)
+    with TestClient(app) as other_session:
+        login(other_session, "alice", "alice-password")
+        client.put("/api/me/password", json={"current_password": "alice-password", "new_password": "new-password"})
+        assert other_session.get("/api/me").status_code == 401
+        assert client.get("/api/me").json() == {"username": "alice"}
+        assert login(other_session, "alice", "new-password").status_code == 200
+        assert other_session.get("/api/me").status_code == 200
+

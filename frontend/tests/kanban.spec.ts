@@ -130,3 +130,31 @@ test("loads without console errors", async ({ page }) => {
   await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
   expect(errors).toEqual([]);
 });
+
+test("adds priority, due date and labels, filters by them, and keeps them after a reload", async ({ page }) => {
+  const backlog = page.getByTestId("column-col-backlog");
+  await backlog.getByRole("button", { name: /add card/i }).click();
+  await backlog.getByLabel("Card title").fill("Prepare launch email");
+  await backlog.getByLabel("Priority").selectOption("high");
+  await backlog.getByLabel("Due date").fill("2020-06-30");
+  await backlog.getByLabel("Labels").fill("launch, email");
+  await saved(page, () => backlog.getByRole("button", { name: /add card/i }).click());
+
+  const card = backlog.locator("article", { hasText: "Prepare launch email" });
+  await expect(card.getByText("high priority")).toBeVisible();
+  await expect(card.getByText("Overdue Jun 30, 2020")).toBeVisible();
+  await expect(card.getByText("email", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(card.getByText("high priority")).toBeVisible();
+
+  const filters = page.getByRole("search", { name: "Filter cards" });
+  await filters.getByLabel("Filter by label").selectOption("launch");
+  await expect(page.locator('[data-testid^="card-"]')).toHaveCount(1);
+  await filters.getByRole("button", { name: "Clear filters" }).click();
+  await filters.getByLabel("Search cards").fill("roadmap");
+  await expect(page.locator('[data-testid^="card-"]')).toHaveCount(1);
+  await expect(page.getByText("Align roadmap themes")).toBeVisible();
+  await filters.getByLabel("Filter by priority").selectOption("high");
+  await expect(page.locator('[data-testid^="card-"]')).toHaveCount(0);
+});

@@ -1,5 +1,7 @@
+import json
 import sqlite3
 
+import pytest
 from conftest import login, register
 from fastapi.testclient import TestClient
 
@@ -164,7 +166,10 @@ def test_save_then_get_returns_saved_board_and_new_version(signed_in, board_id):
     board["columns"][0]["title"] = "Ideas"
     board["columns"][0]["cardIds"].remove("card-1")
     board["columns"][4]["cardIds"].append("card-1")
-    board["cards"]["card-9"] = {"id": "card-9", "title": "New", "details": ""}
+    board["cards"]["card-9"] = {
+        "id": "card-9", "title": "New", "details": "", "priority": "high", "dueDate": "2026-12-01",
+        "labels": ["launch"],
+    }
     board["columns"][1]["cardIds"].insert(0, "card-9")
 
     response = put(signed_in, board_id, board, 1)
@@ -266,3 +271,46 @@ def test_update_board_only_succeeds_at_the_expected_version():
     assert db.update_board(user_id, board_id, data, 1) is None
     assert db.update_board(user_id, board_id, data, 2) == 3
     assert db.update_board(user_id + 1, board_id, data, 3) is None  # not the owner
+
+
+def test_card_fields_are_optional_and_filled_with_defaults(signed_in, board_id):
+    board = default_board()
+    board["cards"]["card-1"] = {"id": "card-1", "title": "Only the basics", "details": ""}
+    saved = put(signed_in, board_id, board, 1).json()["board"]["cards"]["card-1"]
+    assert saved == {"id": "card-1", "title": "Only the basics", "details": "", "priority": None,
+                     "dueDate": None, "labels": []}
+
+
+def test_boards_saved_before_card_fields_existed_still_load(signed_in, board_id, db_path):
+    old = default_board()
+    for card in old["cards"].values():
+        for field in ("priority", "dueDate", "labels"):
+            del card[field]
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE boards SET data = ? WHERE id = ?", (json.dumps(old), board_id))
+    conn.close()
+    assert signed_in.get(f"/api/boards/{board_id}").json()["board"] == default_board()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"priority": "urgent"},
+        {"dueDate": "tomorrow"},
+        {"dueDate": "2026-02-30"},
+        {"labels": [""]},
+        {"labels": ["x" * 31]},
+        {"labels": [f"label-{i}" for i in range(11)]},
+    ],
+    ids=["priority", "date-text", "date-invalid", "label-empty", "label-long", "too-many-labels"],
+)
+def test_invalid_card_fields_rejected(signed_in, board_id, change):
+    board = default_board()
+    board["cards"]["card-1"].update(change)
+    assert put(signed_in, board_id, board, 1).status_code == 422
+
+
+def test_labels_are_trimmed(signed_in, board_id):
+    board = default_board()
+    board["cards"]["card-1"]["labels"] = ["  design "]
+    assert put(signed_in, board_id, board, 1).json()["board"]["cards"]["card-1"]["labels"] == ["design"]

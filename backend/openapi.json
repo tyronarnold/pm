@@ -170,6 +170,7 @@
     "/api/me/password": {
       "put": {
         "summary": "Change Password",
+        "description": "Change the password. Other sessions are signed out; this one stays signed in.",
         "operationId": "change_password_api_me_password_put",
         "requestBody": {
           "content": {
@@ -620,6 +621,45 @@
           "details": {
             "type": "string",
             "title": "Details"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "dueDate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duedate"
+          },
+          "labels": {
+            "items": {
+              "type": "string",
+              "maxLength": 30,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Labels",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -629,7 +669,8 @@
           "title",
           "details"
         ],
-        "title": "Card"
+        "title": "Card",
+        "description": "A card. Priority, due date and labels are optional, so boards saved before they existed stay valid."
       },
       "ChatMessage": {
         "properties": {

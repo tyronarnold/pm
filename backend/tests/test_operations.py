@@ -1,9 +1,10 @@
+from datetime import date
+
 from app.board import DEFAULT_BOARD, Board, Operation, apply_operations
 
 
 def op(type: str, **fields) -> Operation:
-    defaults = dict(card_id=None, column_id=None, title=None, details=None, position=None)
-    return Operation(type=type, **{**defaults, **fields})
+    return Operation(type=type, **fields)
 
 
 def column(board: Board, column_id: str) -> list[str]:
@@ -154,3 +155,62 @@ def test_input_board_is_not_changed():
         ],
     )
     assert DEFAULT_BOARD.model_dump() == before
+
+
+def test_create_card_with_priority_due_date_and_labels():
+    board, skipped = apply_operations(
+        DEFAULT_BOARD,
+        [
+            op(
+                "create_card", column_id="col-backlog", title="Launch", priority="high",
+                due_date="2026-12-01", labels=[" launch ", "marketing"],
+            )
+        ],
+    )
+    assert skipped == []
+    card = board.cards[column(board, "col-backlog")[-1]]
+    assert card.priority == "high"
+    assert card.dueDate == date(2026, 12, 1)
+    assert card.labels == ["launch", "marketing"]
+
+
+def test_new_cards_have_no_priority_due_date_or_labels_by_default():
+    board, _ = apply_operations(DEFAULT_BOARD, [op("create_card", column_id="col-backlog", title="Plain")])
+    card = board.cards[column(board, "col-backlog")[-1]]
+    assert (card.priority, card.dueDate, card.labels) == (None, None, [])
+
+
+def test_edit_priority_due_date_and_labels_keeps_the_rest():
+    board, skipped = apply_operations(
+        DEFAULT_BOARD,
+        [
+            op("edit_card", card_id="card-1", priority="low"),
+            op("edit_card", card_id="card-1", due_date="2027-01-15"),
+            op("edit_card", card_id="card-1", labels=["planning"]),
+        ],
+    )
+    assert skipped == []
+    card = board.cards["card-1"]
+    assert (card.priority, card.dueDate, card.labels) == ("low", date(2027, 1, 15), ["planning"])
+    assert (card.title, card.details) == (DEFAULT_BOARD.cards["card-1"].title, DEFAULT_BOARD.cards["card-1"].details)
+
+
+def test_edit_can_clear_labels_with_an_empty_list():
+    board, _ = apply_operations(DEFAULT_BOARD, [op("edit_card", card_id="card-1", labels=["a"])])
+    board, skipped = apply_operations(board, [op("edit_card", card_id="card-1", labels=[])])
+    assert skipped == []
+    assert board.cards["card-1"].labels == []
+
+
+def test_invalid_card_values_are_skipped():
+    operations = [
+        op("create_card", column_id="col-backlog", title="Bad date", due_date="next friday"),
+        op("create_card", column_id="col-backlog", title="Too many", labels=[f"l{i}" for i in range(11)]),
+        op("create_card", column_id="col-backlog", title="Long label", labels=["x" * 31]),
+        op("edit_card", card_id="card-1", due_date="2026-02-30"),
+        op("edit_card", card_id="card-1", labels=["  "]),
+        op("edit_card", card_id="card-1"),  # changes nothing
+    ]
+    board, skipped = apply_operations(DEFAULT_BOARD, operations)
+    assert board == DEFAULT_BOARD
+    assert skipped == operations

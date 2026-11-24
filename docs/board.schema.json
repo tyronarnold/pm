@@ -3,7 +3,10 @@
   "title": "Board",
   "description": "A user's Kanban board, stored as JSON in boards.data. Same shape as the Board model in backend/app/board.py, from which the frontend's BoardData type is generated.",
   "type": "object",
-  "required": ["columns", "cards"],
+  "required": [
+    "columns",
+    "cards"
+  ],
   "additionalProperties": false,
   "properties": {
     "columns": {
@@ -11,30 +14,80 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "title", "cardIds"],
+        "required": [
+          "id",
+          "title",
+          "cardIds"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "title": { "type": "string" },
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string"
+          },
           "cardIds": {
             "description": "Card ids in display order (top to bottom).",
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
     },
     "cards": {
-      "description": "Cards keyed by id. Each key equals the card's id.",
+      "description": "Cards keyed by id. Each key equals the card's id. priority, dueDate and labels were added later and are optional, so boards saved before them stay valid; the backend fills in null / null / [] when it reads them.",
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["id", "title", "details"],
+        "required": [
+          "id",
+          "title",
+          "details"
+        ],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "title": { "type": "string", "minLength": 1 },
-          "details": { "type": "string" }
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "details": {
+            "type": "string"
+          },
+          "priority": {
+            "description": "Optional; null when not set.",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              null
+            ]
+          },
+          "dueDate": {
+            "description": "Optional due date (YYYY-MM-DD); null when not set.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "labels": {
+            "description": "Optional short tags, trimmed. Missing means none.",
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 30
+            }
+          }
         }
       }
     }

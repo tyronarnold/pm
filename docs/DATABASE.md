@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
+    session_version INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -34,6 +35,7 @@ CREATE INDEX IF NOT EXISTS boards_user_id ON boards (user_id);
 - Every board query in `db.py` is limited by `user_id` as well as the board id, so one user can never read or change another user's board; the API answers 404 for both "no such board" and "not yours".
 - `users.username` is 3-32 lowercase letters, digits, `.`, `_` or `-` (checked by the API, not the database).
 - `users.password_hash` holds an argon2id hash (argon2-cffi), never the password. On startup the demo `user` account is created with the hash of `password` if missing, or given that hash if it has none (databases from before hashing); an existing hash is never replaced. Sign-in checks the hash.
+- `users.session_version` is copied into the session cookie at sign-in and checked on every request. Changing the password increments it, so every other session is signed out (the session that made the change is given the new value and stays signed in).
 - Timestamps are UTC text (`YYYY-MM-DD HH:MM:SS`). `updated_at` is set on every save and rename.
 - `boards.version` starts at 1 and goes up by one on every save of the board data (not on renames). It is used for optimistic concurrency (see Saving below).
 
@@ -59,12 +61,16 @@ If no row is updated, someone else (another tab, or the AI chat) saved first. `P
     { "id": "col-backlog", "title": "Backlog", "cardIds": ["card-1", "card-2"] }
   ],
   "cards": {
-    "card-1": { "id": "card-1", "title": "Align roadmap themes", "details": "..." }
+    "card-1": {
+      "id": "card-1", "title": "Align roadmap themes", "details": "...",
+      "priority": "high", "dueDate": "2026-12-12", "labels": ["planning"]
+    }
   }
 }
 ```
 
 - Card order within a column is the order of `cardIds`.
+- `priority` (`low` / `medium` / `high`), `dueDate` (`YYYY-MM-DD`) and `labels` (up to 10, each 1-30 characters after trimming) are optional. They were added after boards were already stored, so cards without them are still valid and are read as `null`, `null` and `[]`; no data migration was needed.
 - Saving replaces the whole document (`PUT /api/boards/{id}`, and the AI chat after applying its operations).
 - The backend validates the shape with Pydantic models matching the schema, plus two checks the schema cannot express:
   - every card id appears in exactly one column, and every id in `cardIds` has a card in `cards`
@@ -81,6 +87,7 @@ If no row is updated, someone else (another tab, or the AI chat) saved first. `P
 There is no migration framework; `init_db` upgrades databases made by earlier versions, keeping their data:
 
 - `users.password_hash` missing: added with `ALTER TABLE` (the `user` account then gets its hash at startup).
+- `users.session_version` missing: added with `ALTER TABLE` (default 0). Sessions signed before it existed have no version in their cookie, so their users sign in once more.
 - `boards.version` missing: added with `ALTER TABLE` (boards start at version 1).
 - `boards.name` missing (the one-board-per-user design, where `boards.user_id` was `UNIQUE`): SQLite cannot drop a constraint, so the table is rebuilt in one transaction (rename, create the new table, copy every row, drop the old one). Board ids and versions are kept, and each board is named "My board".
 

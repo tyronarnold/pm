@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { initialData, type BoardData } from "@/lib/kanban";
@@ -81,7 +81,14 @@ describe("KanbanBoard", () => {
     expect(within(column).getByText("New card")).toBeInTheDocument();
     const added = lastSaved();
     const newId = added.columns[0].cardIds.at(-1)!;
-    expect(added.cards[newId]).toEqual({ id: newId, title: "New card", details: "Notes" });
+    expect(added.cards[newId]).toEqual({
+      id: newId,
+      title: "New card",
+      details: "Notes",
+      priority: null,
+      dueDate: null,
+      labels: [],
+    });
 
     await userEvent.click(within(column).getByRole("button", { name: /delete new card/i }));
 
@@ -105,7 +112,7 @@ describe("KanbanBoard", () => {
     expect(screen.getByText("Updated details")).toBeInTheDocument();
     expect(screen.queryByText("Align roadmap themes")).not.toBeInTheDocument();
     expect(lastSaved().cards["card-1"]).toEqual({
-      id: "card-1",
+      ...initialData.cards["card-1"],
       title: "Updated title",
       details: "Updated details",
     });
@@ -152,7 +159,7 @@ describe("KanbanBoard", () => {
       columns: initialData.columns.map((column) =>
         column.id === "col-done" ? { ...column, cardIds: [...column.cardIds, "card-ai"] } : column
       ),
-      cards: { ...initialData.cards, "card-ai": { id: "card-ai", title: "From the AI", details: "" } },
+      cards: { ...initialData.cards, "card-ai": { id: "card-ai", title: "From the AI", details: "", labels: [] } },
     };
     fetchMock.mockResolvedValueOnce(json({ reply: "Added it.", board: aiBoard, version: 7 }));
     renderBoard();
@@ -192,7 +199,7 @@ describe("KanbanBoard", () => {
       ...initialData,
       cards: {
         ...initialData.cards,
-        "card-1": { id: "card-1", title: "Changed in another tab", details: "" },
+        "card-1": { id: "card-1", title: "Changed in another tab", details: "", labels: [] },
       },
     };
     fetchMock.mockResolvedValueOnce(json({ detail: "conflict", version: 5, board: serverBoard }, 409));
@@ -214,5 +221,117 @@ describe("KanbanBoard", () => {
     renderBoard();
     await userEvent.click(screen.getByRole("button", { name: "Delete Align roadmap themes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not save your changes.");
+  });
+
+  describe("priority, due date and labels", () => {
+    const detailedBoard: BoardData = {
+      ...initialData,
+      cards: {
+        ...initialData.cards,
+        "card-1": { ...initialData.cards["card-1"], priority: "high", dueDate: "2020-01-01", labels: ["planning"] },
+        "card-2": { ...initialData.cards["card-2"], priority: "low", dueDate: "2099-03-15", labels: ["research", "ux"] },
+        "card-7": { ...initialData.cards["card-7"], dueDate: "2020-01-01" },
+      },
+    };
+
+    const renderDetailed = () =>
+      render(<KanbanBoard boardId={1} initialBoard={detailedBoard} initialVersion={1} />);
+
+    const visibleTitles = () => screen.getAllByRole("heading", { level: 4 }).map((h) => h.textContent);
+
+    it("shows priority, due date and labels on the card", () => {
+      renderDetailed();
+      const card = screen.getByTestId("card-card-2");
+      expect(within(card).getByText("low priority")).toBeInTheDocument();
+      expect(within(card).getByText("Due Mar 15, 2099")).toBeInTheDocument();
+      expect(within(card).getByText("research")).toBeInTheDocument();
+      expect(within(card).getByText("ux")).toBeInTheDocument();
+    });
+
+    it("marks past due dates as overdue, except in the last column", () => {
+      renderDetailed();
+      expect(within(screen.getByTestId("card-card-1")).getByText("Overdue Jan 1, 2020")).toBeInTheDocument();
+      expect(within(screen.getByTestId("card-card-7")).getByText("Due Jan 1, 2020")).toBeInTheDocument();
+    });
+
+    it("adds a card with every field", async () => {
+      renderBoard();
+      const column = getFirstColumn();
+      await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
+      await userEvent.type(within(column).getByLabelText("Card title"), "Launch");
+      await userEvent.selectOptions(within(column).getByLabelText("Priority"), "medium");
+      fireEvent.change(within(column).getByLabelText("Due date"), { target: { value: "2026-12-01" } });
+      await userEvent.type(within(column).getByLabelText("Labels"), "launch, marketing, launch");
+      await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
+
+      const saved = lastSaved();
+      const newId = saved.columns[0].cardIds.at(-1)!;
+      expect(saved.cards[newId]).toEqual({
+        id: newId,
+        title: "Launch",
+        details: "",
+        priority: "medium",
+        dueDate: "2026-12-01",
+        labels: ["launch", "marketing"],
+      });
+      expect(within(column).getByText("medium priority")).toBeInTheDocument();
+    });
+
+    it("edits and clears the fields", async () => {
+      renderDetailed();
+      await userEvent.click(screen.getByRole("button", { name: "Edit Align roadmap themes" }));
+      expect(screen.getByLabelText("Priority")).toHaveValue("high");
+      expect(screen.getByLabelText("Due date")).toHaveValue("2020-01-01");
+      expect(screen.getByLabelText("Labels")).toHaveValue("planning");
+
+      await userEvent.selectOptions(screen.getByLabelText("Priority"), "");
+      fireEvent.change(screen.getByLabelText("Due date"), { target: { value: "" } });
+      await userEvent.clear(screen.getByLabelText("Labels"));
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(lastSaved().cards["card-1"]).toEqual({
+        ...initialData.cards["card-1"],
+        priority: null,
+        dueDate: null,
+        labels: [],
+      });
+      expect(within(screen.getByTestId("card-card-1")).queryByText(/priority|Overdue/)).not.toBeInTheDocument();
+    });
+
+    it("searches titles, details and labels", async () => {
+      renderDetailed();
+      await userEvent.type(screen.getByLabelText("Search cards"), "ux");
+      expect(visibleTitles()).toEqual(["Gather customer signals"]);
+
+      await userEvent.clear(screen.getByLabelText("Search cards"));
+      await userEvent.type(screen.getByLabelText("Search cards"), "MARKETING");
+      expect(visibleTitles()).toEqual(["Ship marketing page"]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("filters by priority and label, shows counts, and clears", async () => {
+      renderDetailed();
+      expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+
+      await userEvent.selectOptions(screen.getByLabelText("Filter by priority"), "high");
+      expect(visibleTitles()).toEqual(["Align roadmap themes"]);
+      const backlog = screen.getByTestId("column-col-backlog");
+      expect(within(backlog).getByLabelText("1 of 2 cards")).toHaveTextContent("1/2");
+      expect(within(screen.getByTestId("column-col-review")).getByText("No matching cards")).toBeInTheDocument();
+
+      await userEvent.selectOptions(screen.getByLabelText("Filter by priority"), "");
+      await userEvent.selectOptions(screen.getByLabelText("Filter by label"), "research");
+      expect(visibleTitles()).toEqual(["Gather customer signals"]);
+
+      await userEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(visibleTitles()).toHaveLength(8);
+      expect(within(backlog).getByLabelText("2 cards")).toHaveTextContent("2");
+    });
+
+    it("only offers a label filter when the board has labels", () => {
+      renderBoard();
+      expect(screen.queryByLabelText("Filter by label")).not.toBeInTheDocument();
+      expect(within(screen.getByTestId("column-col-review")).queryByText("No matching cards")).not.toBeInTheDocument();
+    });
   });
 });

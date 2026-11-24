@@ -38,3 +38,17 @@ def test_live_chat_creates_then_moves_card():
     board, _ = apply_operations(DEFAULT_BOARD, result.operations)
     done = next(c for c in board.columns if c.id == "col-done")
     assert "Ship it" in [board.cards[card_id].title for card_id in done.cardIds]
+
+
+def test_live_chat_sets_priority_due_date_and_labels():
+    result = ai.chat(
+        DEFAULT_BOARD, [],
+        'Make the "QA micro-interactions" card high priority, due on 2027-01-15, with the label "qa".',
+    )
+    board, skipped = apply_operations(DEFAULT_BOARD, result.operations)
+    assert skipped == []
+    card = board.cards["card-6"]
+    assert card.priority == "high"
+    assert card.dueDate.isoformat() == "2027-01-15"
+    assert card.labels == ["qa"]
+    assert card.title == "QA micro-interactions"

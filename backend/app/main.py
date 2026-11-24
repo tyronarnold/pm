@@ -26,7 +26,7 @@ def create_account(username: str, password: str) -> db.User | None:
     if user_id is None:
         return None
     db.create_board(user_id, FIRST_BOARD_NAME, DEFAULT_BOARD.model_dump_json())
-    return db.User(user_id, username)
+    return db.User(user_id, username, 0)
 
 
 @asynccontextmanager
@@ -37,7 +37,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+# One schema per model for requests and responses, so fields with defaults (such as a
+# card's optional priority) are optional in the generated TypeScript types too.
+app = FastAPI(lifespan=lifespan, separate_input_output_schemas=False)
 app.add_middleware(
     SessionMiddleware,
     secret_key=auth.session_secret(),
@@ -47,10 +49,11 @@ app.add_middleware(
 
 
 def current_user(request: Request) -> db.User:
-    """The signed-in user, loaded on every request so a deleted account is signed out everywhere."""
+    """The signed-in user, loaded on every request so a deleted account, or a session from
+    before a password change, is signed out."""
     user_id = request.session.get("user_id")
     user = db.get_user(user_id) if user_id else None
-    if user is None:
+    if user is None or request.session.get("session_version") != user.session_version:
         raise HTTPException(status_code=401, detail="Not signed in")
     return user
 
@@ -95,6 +98,7 @@ class Account(BaseModel):
 def sign_in(request: Request, user: db.User) -> Account:
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["session_version"] = user.session_version
     return Account(username=user.username)
 
 
@@ -150,9 +154,10 @@ def me(user: CurrentUser) -> Account:
 
 
 @app.put("/api/me/password", responses={403: {"description": "Current password is wrong"}})
-def change_password(change: PasswordChange, user: CurrentUser):
+def change_password(change: PasswordChange, request: Request, user: CurrentUser):
+    """Change the password. Other sessions are signed out; this one stays signed in."""
     check_password(user, change.current_password)
-    db.set_password_hash(user.id, auth.hash_password(change.new_password))
+    request.session["session_version"] = db.set_password_hash(user.id, auth.hash_password(change.new_password))
     return {"status": "ok"}
 
 
@@ -276,7 +281,7 @@ def skipped_note(count: int) -> str:
     changes = "1 requested change" if count == 1 else f"{count} requested changes"
     return (
         f"\n\n(Note: {changes} could not be applied, because they referred to a card or column"
-        " that does not exist or had no title.)"
+        " that does not exist, had no title, or had an invalid value.)"
     )
 
 
