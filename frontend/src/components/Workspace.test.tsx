@@ -466,4 +466,103 @@ describe("Workspace", () => {
       expect(screen.queryByRole("region", { name: "Users" })).not.toBeInTheDocument();
     });
   });
+
+  describe("activity", () => {
+    const openActivity = async () => {
+      await userEvent.click(await screen.findByRole("button", { name: "Activity" }));
+      return screen.getByRole("region", { name: "Activity" });
+    };
+
+    it("lists the board's changes with who, what and when", async () => {
+      const { state } = createFakeServer();
+      state.activity[1] = [
+        { username: "alice", message: 'moved "Launch" from "Backlog" to "Done"', via_ai: true, created_at: "2026-03-04 12:30:00" },
+        { username: "user", message: "created the board", via_ai: false, created_at: "2026-03-01 12:00:00" },
+      ];
+      renderWorkspace();
+      const panel = await openActivity();
+      const items = await within(panel).findAllByRole("listitem");
+      expect(items[0]).toHaveTextContent('alice moved "Launch" from "Backlog" to "Done"with AI');
+      expect(items[0]).toHaveTextContent("Mar 4, 2026");
+      expect(items[1]).toHaveTextContent("user created the board");
+      expect(within(items[1]).queryByText("with AI")).not.toBeInTheDocument();
+    });
+
+    it("says when nothing has happened, and refreshes", async () => {
+      const { state } = createFakeServer();
+      renderWorkspace();
+      const panel = await openActivity();
+      expect(await within(panel).findByText("Nothing has happened yet.")).toBeInTheDocument();
+
+      state.activity[1] = [{ username: "user", message: "created the board", via_ai: false, created_at: "2026-03-01 12:00:00" }];
+      await userEvent.click(within(panel).getByRole("button", { name: "Refresh" }));
+      expect(await within(panel).findByText("created the board")).toBeInTheDocument();
+    });
+
+    it("shows a message when the activity cannot be loaded, and closes", async () => {
+      const { fetchMock, handle } = createFakeServer();
+      fetchMock.mockImplementation(async (url, init) =>
+        url.endsWith("/activity") ? json({}, 500) : handle(url, init)
+      );
+      renderWorkspace();
+      const panel = await openActivity();
+      expect(await within(panel).findByRole("alert")).toHaveTextContent("Could not load the activity.");
+      await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("region", { name: "Activity" })).not.toBeInTheDocument();
+    });
+  });
+
+  describe("overview", () => {
+    const openOverview = async () => {
+      await userEvent.click(await screen.findByRole("button", { name: "Overview" }));
+      return screen.getByRole("region", { name: "Overview" });
+    };
+
+    it("shows every board with its cards, progress and overdue count", async () => {
+      const { state } = createFakeServer();
+      state.boards[0].board = {
+        ...state.boards[0].board,
+        cards: {
+          ...state.boards[0].board.cards,
+          "card-1": { ...state.boards[0].board.cards["card-1"], dueDate: "2020-01-01" },
+        },
+      };
+      state.passwords.set("alice", "alice-password");
+      state.boards.push({ id: 7, name: "Alice's plans", version: 1, board: emptyBoard, owner: "alice", members: ["user"] });
+      renderWorkspace();
+      const panel = await openOverview();
+
+      const first = await within(panel).findByRole("button", { name: "Open My first board" });
+      expect(first).toHaveTextContent("8 cards, 2 done");
+      expect(first).toHaveTextContent("1 overdue");
+      expect(within(first).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "25");
+
+      const shared = within(panel).getByRole("button", { name: "Open Alice's plans" });
+      expect(shared).toHaveTextContent("shared by alice");
+      expect(shared).toHaveTextContent("0 cards, 0 done");
+      expect(shared).not.toHaveTextContent("overdue");
+      expect(within(shared).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+    });
+
+    it("opens a board and closes", async () => {
+      const { state } = createFakeServer();
+      state.boards.push({ id: 5, name: "Second", version: 1, board: emptyBoard });
+      renderWorkspace();
+      const panel = await openOverview();
+      await userEvent.click(await within(panel).findByRole("button", { name: "Open Second" }));
+      await waitFor(() => expect(selectedName()).toBe("Second"));
+      expect(screen.queryByRole("region", { name: "Overview" })).not.toBeInTheDocument();
+    });
+
+    it("shows a message when the boards cannot be loaded", async () => {
+      const { fetchMock, handle } = createFakeServer();
+      renderWorkspace();
+      await screen.findByText("Align roadmap themes");
+      fetchMock.mockImplementation(async (url, init) => (url === "/api/boards" ? json({}, 500) : handle(url, init)));
+      const panel = await openOverview();
+      expect(await within(panel).findByRole("alert")).toHaveTextContent("Could not load your boards.");
+      await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("region", { name: "Overview" })).not.toBeInTheDocument();
+    });
+  });
 });

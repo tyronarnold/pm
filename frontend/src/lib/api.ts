@@ -18,6 +18,7 @@ type BoardName = Schemas["BoardName"];
 type NewMember = Schemas["NewMember"];
 export type Account = Schemas["Account"];
 export type UserInfo = Schemas["UserInfo"];
+export type ActivityEntry = Schemas["ActivityEntry"];
 type RoleChange = Schemas["RoleChange"];
 type PasswordReset = Schemas["PasswordReset"];
 
@@ -97,6 +98,10 @@ export const renameBoard = async (id: number, name: string): Promise<BoardSummar
 export const deleteBoard = async (id: number): Promise<void> => {
   ok(await fetch(`/api/boards/${id}`, { method: "DELETE" }), "Deleting the board");
 };
+
+// The board's latest changes, newest first. Throws on failure.
+export const listActivity = async (boardId: number): Promise<ActivityEntry[]> =>
+  ok(await fetch(`/api/boards/${boardId}/activity`), "Loading the activity").json();
 
 // Members of a shared board (usernames, not including the owner).
 

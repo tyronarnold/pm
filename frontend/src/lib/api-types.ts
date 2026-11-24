@@ -271,6 +271,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/boards/{board_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Activity
+         * @description The board's latest changes, newest first (owner and members).
+         */
+        get: operations["list_activity_api_boards__board_id__activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/boards/{board_id}/chat": {
         parameters: {
             query?: never;
@@ -298,6 +318,17 @@ export interface components {
             username: string;
             /** Is Admin */
             is_admin: boolean;
+        };
+        /** ActivityEntry */
+        ActivityEntry: {
+            /** Username */
+            username: string;
+            /** Message */
+            message: string;
+            /** Via Ai */
+            via_ai: boolean;
+            /** Created At */
+            created_at: string;
         };
         /** Board */
         Board: {
@@ -335,6 +366,12 @@ export interface components {
             updated_at: string;
             /** Owner */
             owner: string;
+            /** Cards */
+            cards: number;
+            /** Done */
+            done: number;
+            /** Overdue */
+            overdue: number;
         };
         /**
          * Card
@@ -1236,6 +1273,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description No such board (or not shared with you) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_activity_api_boards__board_id__activity_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEntry"][];
+                };
             };
             /** @description No such board (or not shared with you) */
             404: {

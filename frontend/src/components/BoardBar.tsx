@@ -6,6 +6,8 @@ type BoardBarProps = {
   current: BoardDetail | null;
   username: string; // the signed-in user; only a board's owner can rename or delete it
   onShare: () => void;
+  onActivity: () => void;
+  onOverview: () => void;
   onSelect: (id: number) => void;
   onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<void>;
@@ -21,6 +23,8 @@ export const BoardBar = ({
   current,
   username,
   onShare,
+  onActivity,
+  onOverview,
   onSelect,
   onCreate,
   onRename,
@@ -87,6 +91,11 @@ export const BoardBar = ({
           </select>
         </label>
       )}
+      {boards.length > 0 && (
+        <button type="button" onClick={onOverview} className={buttonClass}>
+          Overview
+        </button>
+      )}
       <button type="button" onClick={() => start("create")} className={buttonClass}>
         New board
       </button>
@@ -103,6 +112,11 @@ export const BoardBar = ({
       {current && (
         <button type="button" onClick={onShare} className={buttonClass}>
           {current.owner === username ? "Share" : "Members"}
+        </button>
+      )}
+      {current && (
+        <button type="button" onClick={onActivity} className={buttonClass}>
+          Activity
         </button>
       )}
     </div>

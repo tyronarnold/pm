@@ -258,3 +258,67 @@ def apply_operations(board: Board, operations: list[Operation]) -> Applied:
     new_ids = _NewIds({}, {})
     skipped = [op for op in operations if not _apply(board, op, new_ids)]
     return Applied(board, skipped)
+
+
+def describe_changes(old: Board, new: Board) -> list[str]:
+    """What changed between two versions of a board, as short sentences for the activity log.
+
+    Columns and cards are matched by id. Moves name both columns; reordering within a
+    column, or of the columns themselves, is one entry each.
+    """
+    changes: list[str] = []
+    old_columns = {column.id: column for column in old.columns}
+    new_columns = {column.id: column for column in new.columns}
+
+    for column in new.columns:
+        before = old_columns.get(column.id)
+        if before is None:
+            changes.append(f'added column "{column.title}"')
+        elif before.title != column.title:
+            changes.append(f'renamed column "{before.title}" to "{column.title}"')
+    for column in old.columns:
+        if column.id not in new_columns:
+            changes.append(f'deleted column "{column.title}"')
+    kept_before = [column.id for column in old.columns if column.id in new_columns]
+    kept_after = [column.id for column in new.columns if column.id in old_columns]
+    if kept_before != kept_after:
+        changes.append("reordered the columns")
+
+    old_place = {card_id: column for column in old.columns for card_id in column.cardIds}
+    new_place = {card_id: column for column in new.columns for card_id in column.cardIds}
+    for card_id, card in new.cards.items():
+        before = old.cards.get(card_id)
+        if before is None:
+            changes.append(f'added card "{card.title}" to "{new_place[card_id].title}"')
+            continue
+        if old_place[card_id].id != new_place[card_id].id:
+            changes.append(f'moved "{card.title}" from "{old_place[card_id].title}" to "{new_place[card_id].title}"')
+        if before != card:
+            changes.append(f'edited "{card.title}"')
+    for card_id, card in old.cards.items():
+        if card_id not in new.cards:
+            changes.append(f'deleted card "{card.title}"')
+
+    for column in new.columns:
+        before = old_columns.get(column.id)
+        if before is None:
+            continue
+        stayed_before = [card_id for card_id in before.cardIds if card_id in column.cardIds]
+        stayed_after = [card_id for card_id in column.cardIds if card_id in before.cardIds]
+        if stayed_before != stayed_after:
+            changes.append(f'reordered cards in "{column.title}"')
+    return changes
+
+
+class BoardStats(NamedTuple):
+    cards: int
+    done: int  # cards in the last column, which holds finished work
+    overdue: int  # due before `today`, and not in the last column
+
+
+def board_stats(board: Board, today: date) -> BoardStats:
+    done_ids = set(board.columns[-1].cardIds) if board.columns else set()
+    overdue = sum(
+        1 for card in board.cards.values() if card.dueDate and card.dueDate < today and card.id not in done_ids
+    )
+    return BoardStats(cards=len(board.cards), done=len(done_ids), overdue=overdue)

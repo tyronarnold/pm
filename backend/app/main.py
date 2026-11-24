@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
@@ -9,7 +10,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import ai, auth, db
-from app.board import DEFAULT_BOARD, EMPTY_BOARD, Board, apply_operations
+from app.board import DEFAULT_BOARD, EMPTY_BOARD, Board, apply_operations, board_stats, describe_changes
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
@@ -25,7 +26,8 @@ def create_account(username: str, password: str) -> db.User | None:
     user_id = db.create_user(username, auth.hash_password(password))
     if user_id is None:
         return None
-    db.create_board(user_id, FIRST_BOARD_NAME, DEFAULT_BOARD.model_dump_json())
+    board_id = db.create_board(user_id, FIRST_BOARD_NAME, DEFAULT_BOARD.model_dump_json())
+    db.add_activity(board_id, username, ["created the board"])
     return db.get_user(user_id)
 
 
@@ -275,6 +277,9 @@ class BoardSummary(BaseModel):
     name: str
     updated_at: str
     owner: str  # username; boards shared with the user have someone else's
+    cards: int
+    done: int  # cards in the last column
+    overdue: int  # past their due date (by the server's date), not in the last column
 
 
 class BoardDetail(BaseModel):
@@ -317,7 +322,8 @@ def find_owned_board(user: db.User, board_id: int) -> db.BoardRow:
 
 
 def summary(row: db.BoardRow) -> BoardSummary:
-    return BoardSummary(id=row.id, name=row.name, updated_at=row.updated_at, owner=row.owner)
+    stats = board_stats(Board.model_validate_json(row.data), date.today())
+    return BoardSummary(id=row.id, name=row.name, updated_at=row.updated_at, owner=row.owner, **stats._asdict())
 
 
 def detail(row: db.BoardRow) -> BoardDetail:
@@ -336,6 +342,7 @@ def list_boards(user: CurrentUser) -> list[BoardSummary]:
 def create_board(new: BoardName, user: CurrentUser) -> BoardDetail:
     """Create a board with the standard columns and no cards."""
     board_id = db.create_board(user.id, new.name, EMPTY_BOARD.model_dump_json())
+    db.add_activity(board_id, user.username, ["created the board"])
     return detail(find_board(user, board_id))
 
 
@@ -346,8 +353,10 @@ def get_board(board_id: int, user: CurrentUser) -> BoardDetail:
 
 @app.patch("/api/boards/{board_id}", responses=OWNER_ONLY)
 def rename_board(board_id: int, new: BoardName, user: CurrentUser) -> BoardSummary:
-    find_owned_board(user, board_id)
+    old_name = find_owned_board(user, board_id).name
     db.rename_board(user.id, board_id, new.name)
+    if new.name != old_name:
+        db.add_activity(board_id, user.username, [f'renamed the board from "{old_name}" to "{new.name}"'])
     return summary(find_board(user, board_id))
 
 
@@ -381,6 +390,7 @@ def add_member(board_id: int, new: NewMember, user: CurrentUser) -> list[str]:
         raise HTTPException(status_code=409, detail="You own this board already.")
     if not db.add_member(board_id, member.id):
         raise HTTPException(status_code=409, detail=f"{member.username} is already a member.")
+    db.add_activity(board_id, user.username, [f"shared the board with {member.username}"])
     return db.list_members(board_id)
 
 
@@ -393,7 +403,26 @@ def remove_member(board_id: int, username: str, user: CurrentUser):
     found = db.find_user(username)
     if found is None or not db.remove_member(board_id, found[0].id):
         raise HTTPException(status_code=404, detail=f"{username} is not a member of this board.")
+    message = "left the board" if username == user.username else f"removed {username} from the board"
+    db.add_activity(board_id, user.username, [message])
     return Response(status_code=204)
+
+
+class ActivityEntry(BaseModel):
+    username: str
+    message: str  # what they did, such as 'moved "Launch" from "Backlog" to "Done"'
+    via_ai: bool  # made by the AI assistant at the user's request
+    created_at: str
+
+
+ACTIVITY_SHOWN = 50
+
+
+@app.get("/api/boards/{board_id}/activity", responses=NOT_FOUND)
+def list_activity(board_id: int, user: CurrentUser) -> list[ActivityEntry]:
+    """The board's latest changes, newest first (owner and members)."""
+    find_board(user, board_id)
+    return [ActivityEntry(**entry._asdict()) for entry in db.list_activity(board_id, ACTIVITY_SHOWN)]
 
 
 @app.put(
@@ -402,6 +431,9 @@ def remove_member(board_id: int, username: str, user: CurrentUser):
 )
 def save_board(board_id: int, update: VersionedBoard, user: CurrentUser) -> VersionedBoard:
     """Save the board if it is still at `update.version` (optimistic concurrency)."""
+    # The save only succeeds if the board is still at the version read here, so this is
+    # exactly the board being replaced, which the activity log compares against.
+    before = detail(find_board(user, board_id)).board
     version = db.update_board(user.id, board_id, update.board.model_dump_json(), update.version)
     if version is None:
         current = detail(find_board(user, board_id))
@@ -410,6 +442,7 @@ def save_board(board_id: int, update: VersionedBoard, user: CurrentUser) -> Vers
             content={"detail": "Board changed since this version", "version": current.version,
                      "board": current.board.model_dump()},
         )
+    db.add_activity(board_id, user.username, describe_changes(before, update.board))
     return VersionedBoard(version=version, board=update.board)
 
 
@@ -454,6 +487,7 @@ def chat(board_id: int, request: ChatRequest, user: CurrentUser) -> ChatResponse
         raise HTTPException(
             status_code=409, detail="Your board changed while the AI was working. Please try again."
         )
+    db.add_activity(board_id, user.username, describe_changes(latest.board, updated), via_ai=True)
     return ChatResponse(reply=reply, board=updated, version=version)
 
 

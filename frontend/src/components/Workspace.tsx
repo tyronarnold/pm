@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { AccountPanel } from "@/components/AccountPanel";
+import { ActivityPanel } from "@/components/ActivityPanel";
 import { AdminPanel } from "@/components/AdminPanel";
 import { BoardBar } from "@/components/BoardBar";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { OverviewPanel } from "@/components/OverviewPanel";
 import { SharePanel } from "@/components/SharePanel";
 import {
   createBoard,
@@ -41,6 +43,8 @@ export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: Wor
   const [showAccount, setShowAccount] = useState(false);
   const [showSharing, setShowSharing] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
+  const [showOverview, setShowOverview] = useState(false);
   // Bumped by "Try again" to load everything again.
   const [attempt, setAttempt] = useState(0);
 
@@ -151,6 +155,8 @@ export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: Wor
               current={current}
               username={username}
               onShare={() => setShowSharing((shown) => !shown)}
+              onActivity={() => setShowActivity((shown) => !shown)}
+              onOverview={() => setShowOverview((shown) => !shown)}
               onSelect={handleSelect}
               onCreate={handleCreate}
               onRename={handleRename}
@@ -169,6 +175,25 @@ export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: Wor
         )}
 
         {showAdmin && <AdminPanel username={username} onClose={() => setShowAdmin(false)} />}
+
+        {showOverview && (
+          <OverviewPanel
+            username={username}
+            onOpen={(id) => {
+              setShowOverview(false);
+              handleSelect(id);
+            }}
+            onClose={() => setShowOverview(false)}
+          />
+        )}
+
+        {showActivity && current && (
+          <ActivityPanel
+            key={`activity-${current.id}`}
+            boardId={current.id}
+            onClose={() => setShowActivity(false)}
+          />
+        )}
 
         {showSharing && current && (
           // Keyed by board, so switching boards loads that board's members. Keys must differ

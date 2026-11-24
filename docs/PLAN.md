@@ -282,7 +282,7 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 14: Editable columns (add, rename, remove, reorder) per board
 - [x] Part 15: Board sharing with other users (members can view and edit)
 - [x] Part 16: Admin user management (admin role, list users, reset password, delete user)
-- [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
+- [x] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
 - [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
 
@@ -386,3 +386,21 @@ Checklist:
 - [x] Docs
 
 Results: 159 backend tests (including live), 101 Vitest, 38 Playwright, all passing.
+
+### Part 17: Activity log and overview
+
+Decisions:
+- The frontend saves whole boards, so there are no per-change events to log. Instead `describe_changes(old, new)` compares the board before and after each save (and each AI change) by card and column id and writes sentences: columns added / renamed / deleted / reordered, cards added / moved / edited / deleted, and cards reordered within a column. It is a pure function with its own unit tests. A save that changes nothing logs nothing. The board compared against is the one read just before the versioned save, which is exactly the board being replaced when the save succeeds
+- Board-level events are logged by their routes: created (including a new account's first board), renamed (only when the name changes), shared, member removed, member left
+- `board_activity` keeps the username as text so entries survive the account being deleted; AI changes are flagged `via_ai` and shown "with AI". Each board keeps its newest 200 entries; the API returns the newest 50. Deleting a board deletes its log
+- The overview reuses `GET /api/boards`: each summary now has `cards`, `done` (cards in the last column) and `overdue` (past due by the server's date, not in the last column). Computing overdue on the server uses the server's date, which can differ from the user's by a day around midnight; the board itself still uses the user's local date
+- Both are panels like Sharing and Users (buttons in the board bar), not new pages: the app stays one page with the board in the URL
+- The activity panel loads when opened and has a Refresh button rather than live updates
+
+Checklist:
+- [x] Backend: `describe_changes`, `board_stats`, activity table and route, stats on summaries
+- [x] Frontend: Activity panel, Overview panel
+- [x] Tests: pytest `test_activity.py`, Vitest activity and overview tests, Playwright `activity.spec.ts` (own log, a member's change in the owner's log, overview)
+- [x] Docs
+
+Results: 178 backend tests (including live), 107 Vitest, 41 Playwright, all passing.

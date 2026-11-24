@@ -1,9 +1,11 @@
-import { initialData, type BoardData } from "@/lib/kanban";
+import type { ActivityEntry } from "@/lib/api";
+import { initialData, isOverdue, localToday, type BoardData } from "@/lib/kanban";
 
 // An in-memory stand-in for the backend API, for component tests that go through
 // several requests (sign in, list boards, open, create, rename, delete, save, share).
 // It follows the backend's rules closely enough for the frontend: versions and 409s,
-// owners and members (boards without an `owner` belong to "user").
+// owners and members (boards without an `owner` belong to "user"). Activity is whatever
+// a test puts in `state.activity`.
 
 type StoredBoard = {
   id: number;
@@ -29,6 +31,7 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
     admins: new Set(["user"]),
     boards: [{ id: 1, name: "My first board", version: 1, board: initialData }] as StoredBoard[],
     nextId: 2,
+    activity: {} as Record<number, ActivityEntry[]>,
   };
 
   const ownerOf = (board: StoredBoard) => board.owner ?? "user";
@@ -37,12 +40,20 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
     state.boards.filter((board) => ownerOf(board) === state.user || membersOf(board).includes(state.user!));
   const forbidden = () => json({ detail: "Only the board's owner can do that." }, 403);
 
-  const summary = (board: StoredBoard) => ({
-    id: board.id,
-    name: board.name,
-    owner: ownerOf(board),
-    updated_at: "2026-01-01 00:00:00",
-  });
+  const summary = (stored: StoredBoard) => {
+    const { id, name, board } = stored;
+    const done = board.columns.at(-1)?.cardIds ?? [];
+    return {
+      id,
+      name,
+      owner: ownerOf(stored),
+      updated_at: "2026-01-01 00:00:00",
+      cards: Object.keys(board.cards).length,
+      done: done.length,
+      overdue: Object.values(board.cards).filter((card) => !done.includes(card.id) && isOverdue(card, localToday()))
+        .length,
+    };
+  };
 
   const handle = async (url: string, init?: RequestInit): Promise<Response> => {
     const method = init?.method ?? "GET";
@@ -135,12 +146,15 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
       return json(visible().map(summary));
     }
 
-    const match = url.match(/^\/api\/boards\/(\d+)(\/chat|\/members)?(?:\/(.+))?$/);
+    const match = url.match(/^\/api\/boards\/(\d+)(\/chat|\/members|\/activity)?(?:\/(.+))?$/);
     const stored = match && visible().find((board) => board.id === Number(match[1]));
     if (!stored) {
       return json({ detail: "Board not found" }, 404);
     }
     const isOwner = ownerOf(stored) === state.user;
+    if (match[2] === "/activity") {
+      return json(state.activity[stored.id] ?? []);
+    }
     if (match[2] === "/chat") {
       return json({ reply: "Noted.", board: null, version: stored.version });
     }

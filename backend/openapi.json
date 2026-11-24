@@ -780,6 +780,53 @@
         }
       }
     },
+    "/api/boards/{board_id}/activity": {
+      "get": {
+        "summary": "List Activity",
+        "description": "The board's latest changes, newest first (owner and members).",
+        "operationId": "list_activity_api_boards__board_id__activity_get",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Board Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityEntry"
+                  },
+                  "title": "Response List Activity Api Boards  Board Id  Activity Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such board (or not shared with you)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/boards/{board_id}/chat": {
       "post": {
         "summary": "Chat",
@@ -855,6 +902,34 @@
           "is_admin"
         ],
         "title": "Account"
+      },
+      "ActivityEntry": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "via_ai": {
+            "type": "boolean",
+            "title": "Via Ai"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "message",
+          "via_ai",
+          "created_at"
+        ],
+        "title": "ActivityEntry"
       },
       "Board": {
         "properties": {
@@ -945,6 +1020,18 @@
           "owner": {
             "type": "string",
             "title": "Owner"
+          },
+          "cards": {
+            "type": "integer",
+            "title": "Cards"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "overdue": {
+            "type": "integer",
+            "title": "Overdue"
           }
         },
         "type": "object",
@@ -952,7 +1039,10 @@
           "id",
           "name",
           "updated_at",
-          "owner"
+          "owner",
+          "cards",
+          "done",
+          "overdue"
         ],
         "title": "BoardSummary"
       },

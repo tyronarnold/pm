@@ -39,6 +39,22 @@ CREATE TABLE IF NOT EXISTS board_members (
 CREATE INDEX IF NOT EXISTS board_members_user_id ON board_members (user_id);
 """
 
+# What happened on a board. The username is kept as text, so entries outlive the account.
+ACTIVITY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS board_activity (
+    id INTEGER PRIMARY KEY,
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    message TEXT NOT NULL,
+    via_ai INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS board_activity_board_id ON board_activity (board_id, id);
+"""
+
+# Each board keeps this many activity entries; older ones are removed as new ones are added.
+ACTIVITY_KEPT = 200
+
 # Databases from before multiple boards had one board per user (`user_id UNIQUE`) and no
 # name. SQLite cannot drop a constraint, so the table is rebuilt, keeping every board.
 MULTIPLE_BOARDS_MIGRATION = f"""
@@ -59,6 +75,13 @@ class User(NamedTuple):
     # which signs out every other session.
     session_version: int
     is_admin: bool
+
+
+class Activity(NamedTuple):
+    username: str
+    message: str
+    via_ai: bool
+    created_at: str
 
 
 class UserSummary(NamedTuple):
@@ -109,6 +132,7 @@ def init_db() -> None:
             conn.executescript(MULTIPLE_BOARDS_MIGRATION)
         conn.executescript(BOARDS_SCHEMA)
         conn.executescript(MEMBERS_SCHEMA)
+        conn.executescript(ACTIVITY_SCHEMA)
 
 
 # Users
@@ -308,3 +332,33 @@ def remove_member(board_id: int, user_id: int) -> bool:
             "DELETE FROM board_members WHERE board_id = ? AND user_id = ?", (board_id, user_id)
         )
     return cursor.rowcount == 1
+
+
+# Activity
+
+
+def add_activity(board_id: int, username: str, messages: list[str], via_ai: bool = False) -> None:
+    """Record what the user did on the board, keeping the newest ACTIVITY_KEPT entries."""
+    if not messages:
+        return
+    with closing(connect()) as conn:
+        conn.executemany(
+            "INSERT INTO board_activity (board_id, username, message, via_ai) VALUES (?, ?, ?, ?)",
+            [(board_id, username, message, via_ai) for message in messages],
+        )
+        conn.execute(
+            "DELETE FROM board_activity WHERE board_id = ? AND id NOT IN"
+            " (SELECT id FROM board_activity WHERE board_id = ? ORDER BY id DESC LIMIT ?)",
+            (board_id, board_id, ACTIVITY_KEPT),
+        )
+
+
+def list_activity(board_id: int, limit: int) -> list[Activity]:
+    """The board's newest activity entries, newest first."""
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT username, message, via_ai, created_at FROM board_activity"
+            " WHERE board_id = ? ORDER BY id DESC LIMIT ?",
+            (board_id, limit),
+        ).fetchall()
+    return [Activity(row[0], row[1], bool(row[2]), row[3]) for row in rows]
