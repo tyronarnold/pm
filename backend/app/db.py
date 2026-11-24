@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
     session_version INTEGER NOT NULL DEFAULT 0,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 """
@@ -57,6 +58,16 @@ class User(NamedTuple):
     # Stored in the session cookie at sign-in; changing the password increments it,
     # which signs out every other session.
     session_version: int
+    is_admin: bool
+
+
+class UserSummary(NamedTuple):
+    """A user as admins see them."""
+
+    username: str
+    is_admin: bool
+    created_at: str
+    boards: int  # boards they own
 
 
 class BoardRow(NamedTuple):
@@ -89,6 +100,8 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
         if "session_version" not in users:
             conn.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
+        if "is_admin" not in users:
+            conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
         old_boards = _columns(conn, "boards")
         if old_boards and "name" not in old_boards:
             if "version" not in old_boards:
@@ -124,19 +137,19 @@ def ensure_password(username: str, password_hash: str) -> None:
 def get_user(user_id: int) -> User | None:
     with closing(connect()) as conn:
         row = conn.execute(
-            "SELECT id, username, session_version FROM users WHERE id = ?", (user_id,)
+            "SELECT id, username, session_version, is_admin FROM users WHERE id = ?", (user_id,)
         ).fetchone()
-    return User(*row) if row else None
+    return User(*row[:3], bool(row[3])) if row else None
 
 
 def find_user(username: str) -> tuple[User, str | None] | None:
     """The user and their password hash, or None if there is no such user."""
     with closing(connect()) as conn:
         row = conn.execute(
-            "SELECT id, username, session_version, password_hash FROM users WHERE username = ?",
+            "SELECT id, username, session_version, is_admin, password_hash FROM users WHERE username = ?",
             (username,),
         ).fetchone()
-    return (User(*row[:3]), row[3]) if row else None
+    return (User(*row[:3], bool(row[3])), row[4]) if row else None
 
 
 def get_password_hash(user_id: int) -> str | None:
@@ -159,6 +172,40 @@ def delete_user(user_id: int) -> None:
     """Delete the user and all their boards."""
     with closing(connect()) as conn:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+# Administration
+
+
+def list_users() -> list[UserSummary]:
+    """Every user, by username, with the number of boards they own."""
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT users.username, users.is_admin, users.created_at, COUNT(boards.id)"
+            " FROM users LEFT JOIN boards ON boards.user_id = users.id"
+            " GROUP BY users.id ORDER BY users.username"
+        ).fetchall()
+    return [UserSummary(row[0], bool(row[1]), row[2], row[3]) for row in rows]
+
+
+def set_admin(user_id: int, is_admin: bool) -> None:
+    with closing(connect()) as conn:
+        conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (is_admin, user_id))
+
+
+def count_admins() -> int:
+    with closing(connect()) as conn:
+        return conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1").fetchone()[0]
+
+
+def ensure_an_admin(username: str) -> None:
+    """Make the user an admin if nobody is one (new databases, and those from before admins)."""
+    with closing(connect()) as conn:
+        conn.execute(
+            "UPDATE users SET is_admin = 1 WHERE username = ?"
+            " AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1)",
+            (username,),
+        )
 
 
 # Boards. Reads and saves are limited to boards the user owns or is a member of

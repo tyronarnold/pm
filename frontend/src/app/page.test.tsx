@@ -40,6 +40,19 @@ describe("Home", () => {
     expect(screen.getByText("Signed in as")).toHaveTextContent("Signed in as user");
   });
 
+  it("offers the admin panel to admins only", async () => {
+    createFakeServer();
+    const { unmount } = render(<Home />);
+    expect(await screen.findByRole("button", { name: "Admin" })).toBeInTheDocument();
+    unmount();
+
+    createFakeServer({ signedIn: false });
+    render(<Home />);
+    await register("alice", "alice-password");
+    await screen.findAllByTestId(/column-/);
+    expect(screen.queryByRole("button", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
   it("signs in with valid credentials", async () => {
     const { fetchMock } = createFakeServer({ signedIn: false });
     render(<Home />);

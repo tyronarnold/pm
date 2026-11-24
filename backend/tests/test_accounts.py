@@ -10,8 +10,8 @@ from app.main import app
 def test_register_creates_an_account_and_signs_in(client):
     response = register(client)
     assert response.status_code == 201
-    assert response.json() == {"username": "alice"}
-    assert client.get("/api/me").json() == {"username": "alice"}
+    assert response.json() == {"username": "alice", "is_admin": False}
+    assert client.get("/api/me").json() == {"username": "alice", "is_admin": False}
 
 
 def test_a_new_account_starts_with_the_sample_board(client):
@@ -53,7 +53,7 @@ def test_password_needs_8_characters(client):
 
 def test_registering_replaces_the_current_session(signed_in):
     register(signed_in)
-    assert signed_in.get("/api/me").json() == {"username": "alice"}
+    assert signed_in.get("/api/me").json() == {"username": "alice", "is_admin": False}
 
 
 def test_change_password(signed_in):
@@ -104,7 +104,7 @@ def test_delete_account_needs_the_password(client):
     register(client)
     response = client.request("DELETE", "/api/me", json={"password": "wrong"})
     assert response.status_code == 403
-    assert client.get("/api/me").json() == {"username": "alice"}
+    assert client.get("/api/me").json() == {"username": "alice", "is_admin": False}
 
 
 def test_a_deleted_account_is_signed_out_in_every_session(client):
@@ -129,7 +129,7 @@ def test_changing_the_password_signs_out_other_sessions_but_not_this_one(client)
         login(other_session, "alice", "alice-password")
         client.put("/api/me/password", json={"current_password": "alice-password", "new_password": "new-password"})
         assert other_session.get("/api/me").status_code == 401
-        assert client.get("/api/me").json() == {"username": "alice"}
+        assert client.get("/api/me").json() == {"username": "alice", "is_admin": False}
         assert login(other_session, "alice", "new-password").status_code == 200
         assert other_session.get("/api/me").status_code == 200
 

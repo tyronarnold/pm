@@ -3,8 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { Workspace } from "@/components/Workspace";
 import { createFakeServer, emptyBoard, json } from "@/test/fakeServer";
 
-const renderWorkspace = (onAccountDeleted = () => {}) =>
-  render(<Workspace username="user" onLogout={() => {}} onAccountDeleted={onAccountDeleted} />);
+const renderWorkspace = (onAccountDeleted = () => {}, isAdmin = false) =>
+  render(
+    <Workspace username="user" isAdmin={isAdmin} onLogout={() => {}} onAccountDeleted={onAccountDeleted} />
+  );
 
 const boardSelect = () => screen.getByRole("combobox", { name: "Board" });
 
@@ -341,6 +343,127 @@ describe("Workspace", () => {
         expect(state.boards.find((board) => board.id === 7)!.members).toEqual(["user"]);
         expect(selectedName()).toBe("Alice's plans (shared by alice)");
       });
+    });
+  });
+
+  describe("administration", () => {
+    const withAlice = () => {
+      const server = createFakeServer();
+      server.state.passwords.set("alice", "alice-password");
+      return server;
+    };
+
+    const openAdmin = async () => {
+      renderWorkspace(() => {}, true);
+      await userEvent.click(await screen.findByRole("button", { name: "Admin" }));
+      const panel = screen.getByRole("region", { name: "Users" });
+      await within(panel).findByText("alice");
+      return panel;
+    };
+
+    const rows = (panel: HTMLElement) =>
+      within(panel)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) =>
+          within(row)
+            .getAllByRole("cell")
+            .slice(0, 3)
+            .map((cell) => cell.textContent)
+        );
+
+    it("is only offered to admins", async () => {
+      createFakeServer();
+      renderWorkspace();
+      await screen.findByText("Align roadmap themes");
+      expect(screen.queryByRole("button", { name: "Admin" })).not.toBeInTheDocument();
+    });
+
+    it("lists every user with their role and boards", async () => {
+      withAlice();
+      const panel = await openAdmin();
+      expect(rows(panel)).toEqual([
+        ["alice", "Member", "0"],
+        ["user (you)", "Admin", "1"],
+      ]);
+      expect(within(panel).getAllByRole("cell")[3]).toHaveTextContent("Jan 2, 2026");
+    });
+
+    it("makes a user an admin and back", async () => {
+      const { state } = withAlice();
+      const panel = await openAdmin();
+      await userEvent.click(within(panel).getByRole("button", { name: "Make admin alice" }));
+      expect(await within(panel).findByRole("status")).toHaveTextContent("alice is now an admin.");
+      await waitFor(() => expect(rows(panel)[0]).toEqual(["alice", "Admin", "0"]));
+      expect(state.admins.has("alice")).toBe(true);
+
+      await userEvent.click(within(panel).getByRole("button", { name: "Remove admin from alice" }));
+      await waitFor(() => expect(rows(panel)[0]).toEqual(["alice", "Member", "0"]));
+    });
+
+    it("explains why the last admin cannot be removed", async () => {
+      const { state } = withAlice();
+      const panel = await openAdmin();
+      await userEvent.click(within(panel).getByRole("button", { name: "Remove admin from user" }));
+      expect(await within(panel).findByRole("status")).toHaveTextContent("There must be at least one admin.");
+      expect(state.admins.has("user")).toBe(true);
+    });
+
+    it("resets a password", async () => {
+      const { state } = withAlice();
+      const panel = await openAdmin();
+      await userEvent.click(within(panel).getByRole("button", { name: "Reset password for alice" }));
+      await userEvent.type(within(panel).getByLabelText("New password for alice"), "fresh-password");
+      await userEvent.click(within(panel).getByRole("button", { name: "Set password" }));
+
+      expect(await within(panel).findByRole("status")).toHaveTextContent(
+        "alice's password has been reset; they are signed out."
+      );
+      expect(state.passwords.get("alice")).toBe("fresh-password");
+      expect(within(panel).queryByLabelText("New password for alice")).not.toBeInTheDocument();
+    });
+
+    it("cancels a password reset", async () => {
+      const { state } = withAlice();
+      const panel = await openAdmin();
+      await userEvent.click(within(panel).getByRole("button", { name: "Reset password for alice" }));
+      await userEvent.click(within(panel).getByRole("button", { name: "Cancel" }));
+      expect(within(panel).queryByLabelText("New password for alice")).not.toBeInTheDocument();
+      expect(state.passwords.get("alice")).toBe("alice-password");
+    });
+
+    it("deletes a user after confirming, but not yourself", async () => {
+      const { state } = withAlice();
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+      const panel = await openAdmin();
+      expect(within(panel).queryByRole("button", { name: "Delete user" })).not.toBeInTheDocument();
+
+      await userEvent.click(within(panel).getByRole("button", { name: "Delete alice" }));
+      expect(confirm).toHaveBeenCalledWith("Delete alice and all their boards? This cannot be undone.");
+      expect(await within(panel).findByRole("status")).toHaveTextContent("alice has been deleted.");
+      await waitFor(() => expect(rows(panel)).toEqual([["user (you)", "Admin", "1"]]));
+      expect(state.passwords.has("alice")).toBe(false);
+    });
+
+    it("keeps the user when deleting is not confirmed", async () => {
+      const { state } = withAlice();
+      vi.spyOn(window, "confirm").mockReturnValue(false);
+      const panel = await openAdmin();
+      await userEvent.click(within(panel).getByRole("button", { name: "Delete alice" }));
+      expect(state.passwords.has("alice")).toBe(true);
+    });
+
+    it("shows a message when the users cannot be loaded, and closes", async () => {
+      const { fetchMock, handle } = withAlice();
+      fetchMock.mockImplementation(async (url, init) =>
+        url === "/api/admin/users" ? json({}, 500) : handle(url, init)
+      );
+      renderWorkspace(() => {}, true);
+      await userEvent.click(await screen.findByRole("button", { name: "Admin" }));
+      const panel = screen.getByRole("region", { name: "Users" });
+      expect(await within(panel).findByRole("status")).toHaveTextContent("Could not load the users.");
+      await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("region", { name: "Users" })).not.toBeInTheDocument();
     });
   });
 });

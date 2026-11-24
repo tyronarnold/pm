@@ -281,7 +281,7 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 13: Richer cards (priority, due date, labels) and board search / filter
 - [x] Part 14: Editable columns (add, rename, remove, reorder) per board
 - [x] Part 15: Board sharing with other users (members can view and edit)
-- [ ] Part 16: Admin user management (admin role, list users, reset password, delete user)
+- [x] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
 - [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
@@ -368,3 +368,21 @@ Checklist:
 - [x] Docs
 
 Results: 144 backend tests (including live), 91 Vitest, 34 Playwright, all passing.
+
+### Part 16: Admin user management
+
+Decisions:
+- `users.is_admin` flag; `/api/me` (and register / login) return `is_admin`. Admin routes live under `/api/admin/users` behind a `current_admin` dependency. Because `current_user` reloads the user on every request, role changes take effect at once
+- There is always an admin: at startup, if nobody is one, the demo `user` account becomes one (covers new databases and those from before admins), and the API refuses to demote the last admin. Admins cannot delete themselves through the admin routes (account settings does that), so deleting someone else never removes the last admin
+- Admins see each user's role, boards owned and join date, but not their boards' contents: managing accounts does not need them
+- A password reset bumps the user's session version (signing them out everywhere, as a password change does) and clears any sign-in lockout, so it doubles as "unlock this account"
+- The admin panel is a table with inline actions and one status line for results and server messages, matching the account and sharing panels
+- Test notes: Playwright's role names match substrings, so "Set password" needs `exact: true` beside "Reset password for ..." buttons; the fake API's timestamp is midday UTC so the shown date is the same in nearly every time zone
+
+Checklist:
+- [x] Backend: admin flag and startup rule, admin routes
+- [x] Frontend: Admin button and panel
+- [x] Tests: pytest `test_admin.py`, Vitest administration tests (fake API with admins), Playwright `admin.spec.ts`
+- [x] Docs
+
+Results: 159 backend tests (including live), 101 Vitest, 38 Playwright, all passing.

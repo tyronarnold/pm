@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AccountPanel } from "@/components/AccountPanel";
+import { AdminPanel } from "@/components/AdminPanel";
 import { BoardBar } from "@/components/BoardBar";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { SharePanel } from "@/components/SharePanel";
@@ -17,6 +18,7 @@ import {
 
 type WorkspaceProps = {
   username: string;
+  isAdmin: boolean;
   onLogout: () => void;
   onAccountDeleted: () => void;
 };
@@ -31,13 +33,14 @@ const showInUrl = (id: number | undefined) =>
 
 const ACTION_FAILED = "That did not work. Check that the server is running and try again.";
 
-export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspaceProps) => {
+export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: WorkspaceProps) => {
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [current, setCurrent] = useState<BoardDetail | null>(null);
   const [status, setStatus] = useState<Status>("loading");
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [showSharing, setShowSharing] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   // Bumped by "Try again" to load everything again.
   const [attempt, setAttempt] = useState(0);
 
@@ -115,6 +118,16 @@ export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspacePro
               <p className="text-sm text-[var(--gray-text)]">
                 Signed in as <span className="font-semibold text-[var(--navy-dark)]">{username}</span>
               </p>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowAdmin((shown) => !shown)}
+                  aria-expanded={showAdmin}
+                  className="rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--secondary-purple)] transition hover:text-[var(--navy-dark)]"
+                >
+                  Admin
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setShowAccount((shown) => !shown)}
@@ -154,6 +167,8 @@ export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspacePro
         {showAccount && (
           <AccountPanel onClose={() => setShowAccount(false)} onDeleted={onAccountDeleted} />
         )}
+
+        {showAdmin && <AdminPanel username={username} onClose={() => setShowAdmin(false)} />}
 
         {showSharing && current && (
           // Keyed by board, so switching boards loads that board's members. Keys must differ

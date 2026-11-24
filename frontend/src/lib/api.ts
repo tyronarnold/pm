@@ -16,6 +16,10 @@ type PasswordChange = Schemas["PasswordChange"];
 type PasswordConfirmation = Schemas["PasswordConfirmation"];
 type BoardName = Schemas["BoardName"];
 type NewMember = Schemas["NewMember"];
+export type Account = Schemas["Account"];
+export type UserInfo = Schemas["UserInfo"];
+type RoleChange = Schemas["RoleChange"];
+type PasswordReset = Schemas["PasswordReset"];
 
 const send = (url: string, method: string, body?: unknown) =>
   fetch(url, {
@@ -40,13 +44,10 @@ const ok = (response: Response, what: string) => {
 
 // Accounts. Each action returns null on success, or a message for the user.
 
-export const getCurrentUser = async (): Promise<string | null> => {
+// The signed-in account, or null when signed out. Throws if the server cannot be reached.
+export const getCurrentUser = async (): Promise<Account | null> => {
   const response = await fetch("/api/me");
-  if (!response.ok) {
-    return null;
-  }
-  const data = await response.json();
-  return data.username;
+  return response.ok ? response.json() : null;
 };
 
 export const login = async (username: string, password: string): Promise<string | null> => {
@@ -114,6 +115,30 @@ export const removeMember = async (boardId: number, username: string): Promise<v
     await fetch(`/api/boards/${boardId}/members/${encodeURIComponent(username)}`, { method: "DELETE" }),
     "Removing the member"
   );
+};
+
+// Administration (admins only). Actions return null on success, or a message for the user.
+
+export const listUsers = async (): Promise<UserInfo[]> =>
+  ok(await fetch("/api/admin/users"), "Loading the users").json();
+
+const userUrl = (username: string) => `/api/admin/users/${encodeURIComponent(username)}`;
+
+export const setAdmin = async (username: string, isAdmin: boolean): Promise<string | null> => {
+  const response = await send(userUrl(username), "PATCH", { is_admin: isAdmin } satisfies RoleChange);
+  return response.ok ? null : errorMessage(response, "Could not change the role.");
+};
+
+export const resetPassword = async (username: string, password: string): Promise<string | null> => {
+  const response = await send(`${userUrl(username)}/password`, "PUT", {
+    new_password: password,
+  } satisfies PasswordReset);
+  return response.ok ? null : errorMessage(response, "Passwords need at least 8 characters.");
+};
+
+export const deleteUser = async (username: string): Promise<string | null> => {
+  const response = await fetch(userUrl(username), { method: "DELETE" });
+  return response.ok ? null : errorMessage(response, "Could not delete the user.");
 };
 
 const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again.";

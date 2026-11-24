@@ -26,6 +26,7 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
   const state = {
     user: (signedIn ? "user" : null) as string | null,
     passwords: new Map([["user", "password"]]),
+    admins: new Set(["user"]),
     boards: [{ id: 1, name: "My first board", version: 1, board: initialData }] as StoredBoard[],
     nextId: 2,
   };
@@ -72,7 +73,43 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
       return json({ detail: "Not signed in" }, 401);
     }
     if (url === "/api/me" && method === "GET") {
-      return json({ username: state.user });
+      return json({ username: state.user, is_admin: state.admins.has(state.user) });
+    }
+    const adminMatch = url.match(/^\/api\/admin\/users(?:\/([^/]+))?(\/password)?$/);
+    if (adminMatch) {
+      if (!state.admins.has(state.user)) {
+        return json({ detail: "Only admins can do that." }, 403);
+      }
+      const name = adminMatch[1] && decodeURIComponent(adminMatch[1]);
+      if (!name) {
+        return json(
+          [...state.passwords.keys()].sort().map((username) => ({
+            username,
+            is_admin: state.admins.has(username),
+            created_at: "2026-01-02 12:00:00", // midday UTC: Jan 2 in nearly every time zone
+            boards: state.boards.filter((board) => ownerOf(board) === username).length,
+          }))
+        );
+      }
+      if (!state.passwords.has(name)) {
+        return json({ detail: "No such user." }, 404);
+      }
+      if (adminMatch[2]) {
+        state.passwords.set(name, body.new_password);
+        return json({ status: "ok" });
+      }
+      if (method === "PATCH") {
+        if (!body.is_admin && state.admins.has(name) && state.admins.size === 1) {
+          return json({ detail: "There must be at least one admin." }, 409);
+        }
+        if (body.is_admin) state.admins.add(name);
+        else state.admins.delete(name);
+        return json({ username: name, is_admin: body.is_admin });
+      }
+      state.passwords.delete(name);
+      state.admins.delete(name);
+      state.boards = state.boards.filter((board) => ownerOf(board) !== name);
+      return new Response(null, { status: 204 });
     }
     if (url === "/api/me/password") {
       if (state.passwords.get(state.user) !== body.current_password) {

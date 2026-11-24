@@ -13,7 +13,9 @@ This project is building a Project Management App. Key features:
 
 ## Limitations
 
-The demo account 'user' / 'password' is always available (created at startup if missing).
+The demo account 'user' / 'password' is always available (created at startup if missing). If no account is an admin, the demo account is made one at startup.
+
+Admins can see every user, make other users admins (there is always at least one admin), reset passwords and delete users.
 
 This runs locally (in a docker container). The roadmap beyond the MVP is in docs/PLAN.md (Part 12 onwards).
 

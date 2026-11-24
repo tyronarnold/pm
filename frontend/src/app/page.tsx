@@ -3,22 +3,22 @@
 import { useEffect, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
 import { Workspace } from "@/components/Workspace";
-import { getCurrentUser, login, logout, register } from "@/lib/api";
+import { getCurrentUser, login, logout, register, type Account } from "@/lib/api";
 
 type View = "checking" | "signed-out" | "failed" | "signed-in";
 
 export default function Home() {
   const [view, setView] = useState<View>("checking");
-  const [username, setUsername] = useState("");
+  const [account, setAccount] = useState<Account | null>(null);
   // Bumped to run the sign-in check again (after signing in, or on "Try again").
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const check = async () => {
       try {
-        const name = await getCurrentUser();
-        setUsername(name ?? "");
-        setView(name ? "signed-in" : "signed-out");
+        const current = await getCurrentUser();
+        setAccount(current);
+        setView(current ? "signed-in" : "signed-out");
       } catch {
         setView("failed");
       }
@@ -66,8 +66,9 @@ export default function Home() {
   }
   return (
     <Workspace
-      key={username}
-      username={username}
+      key={account!.username}
+      username={account!.username}
+      isAdmin={account!.is_admin}
       onLogout={handleLogout}
       onAccountDeleted={() => setView("signed-out")}
     />

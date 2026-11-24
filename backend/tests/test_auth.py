@@ -14,7 +14,7 @@ def demo_hash() -> str:
 def test_login_success_sets_session_cookie(client):
     response = login(client)
     assert response.status_code == 200
-    assert response.json() == {"username": "user"}
+    assert response.json() == {"username": "user", "is_admin": True}
     assert "session" in response.cookies
 
 
@@ -36,7 +36,7 @@ def test_me_requires_login(client):
     login(client)
     response = client.get("/api/me")
     assert response.status_code == 200
-    assert response.json() == {"username": "user"}
+    assert response.json() == {"username": "user", "is_admin": True}
 
 
 def test_logout_clears_session(client):
