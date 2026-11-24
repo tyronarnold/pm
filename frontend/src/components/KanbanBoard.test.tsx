@@ -435,4 +435,35 @@ describe("KanbanBoard", () => {
       expect(screen.getByRole("button", { name: "Delete untitled column" })).toBeEnabled();
     });
   });
+
+  it("drops an unsaved change when the AI returns a board, and says so", async () => {
+    let finishSave: (response: Response) => void = () => {};
+    fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (finishSave = resolve)));
+    fetchMock.mockResolvedValueOnce(json({ reply: "Done.", board: initialData, version: 9 }));
+    renderBoard();
+
+    // The first delete is being saved; the second waits for it, then the AI's board arrives.
+    await userEvent.click(screen.getByRole("button", { name: "Delete Align roadmap themes" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete Gather customer signals" }));
+    await userEvent.type(screen.getByLabelText("Message"), "Tidy up");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText(/changed somewhere else/)).toBeInTheDocument();
+    expect(screen.getByText("Gather customer signals")).toBeInTheDocument();
+    finishSave(json({ version: 2, board: puts()[0].board }));
+    await waitFor(() => expect(puts()).toHaveLength(1)); // the dropped change is not sent
+  });
+
+  it("does not add a card whose title is only spaces, and can cancel", async () => {
+    renderBoard();
+    const column = getFirstColumn();
+    await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
+    await userEvent.type(within(column).getByLabelText("Card title"), "   ");
+    await userEvent.click(within(column).getByRole("button", { name: /add card/i }));
+    expect(within(column).getByLabelText("Card title")).toBeInTheDocument();
+
+    await userEvent.click(within(column).getByRole("button", { name: "Cancel" }));
+    expect(within(column).queryByLabelText("Card title")).not.toBeInTheDocument();
+    expect(savedBoards()).toHaveLength(0);
+  });
 });

@@ -285,6 +285,36 @@ describe("Workspace", () => {
       expect(await within(panel).findByRole("alert")).toHaveTextContent('There is no user called "nobody".');
     });
 
+    it("ignores a blank username", async () => {
+      const { fetchMock } = createFakeServer();
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      await userEvent.type(within(panel).getByLabelText("Share with (username)"), "   ");
+      await userEvent.click(within(panel).getByRole("button", { name: "Share" }));
+      expect(fetchMock).not.toHaveBeenCalledWith("/api/boards/1/members", expect.objectContaining({ method: "POST" }));
+    });
+
+    it("shows a message when the members cannot be loaded or removed", async () => {
+      const { state, fetchMock, handle } = createFakeServer();
+      state.passwords.set("alice", "alice-password");
+      state.boards[0].members = ["alice"];
+      fetchMock.mockImplementation(async (url, init) =>
+        url.includes("/members") && init?.method === "DELETE" ? json({}, 500) : handle(url, init)
+      );
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      await userEvent.click(await within(panel).findByRole("button", { name: "Remove alice" }));
+      expect(await within(panel).findByRole("alert")).toHaveTextContent("That did not work.");
+      expect(state.boards[0].members).toEqual(["alice"]);
+
+      fetchMock.mockImplementation(async (url, init) =>
+        url.endsWith("/members") ? json({}, 500) : handle(url, init)
+      );
+      await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+      const reopened = await openSharing("Share");
+      expect(await within(reopened).findByRole("alert")).toHaveTextContent("That did not work.");
+    });
+
     it("closes", async () => {
       createFakeServer();
       renderWorkspace();
@@ -332,6 +362,19 @@ describe("Workspace", () => {
         expect(state.boards.find((board) => board.id === 7)!.members).toEqual([]);
         expect(screen.queryByRole("region", { name: "Sharing" })).not.toBeInTheDocument();
         expect(within(boardSelect()).getAllByRole("option")).toHaveLength(1);
+      });
+
+      it("shows a message when leaving fails", async () => {
+        const { state, fetchMock, handle } = sharedWithUser();
+        vi.spyOn(window, "confirm").mockReturnValue(true);
+        fetchMock.mockImplementation(async (url, init) =>
+          init?.method === "DELETE" ? json({}, 500) : handle(url, init)
+        );
+        renderWorkspace();
+        const panel = await openSharing("Members");
+        await userEvent.click(within(panel).getByRole("button", { name: "Leave board" }));
+        expect(await within(panel).findByRole("alert")).toHaveTextContent("That did not work.");
+        expect(state.boards.find((board) => board.id === 7)!.members).toEqual(["user"]);
       });
 
       it("stays on the board when leaving is not confirmed", async () => {
@@ -453,6 +496,16 @@ describe("Workspace", () => {
       expect(state.passwords.has("alice")).toBe(true);
     });
 
+    it("shows a message when the list cannot be reloaded after an action", async () => {
+      const { fetchMock, handle } = withAlice();
+      const panel = await openAdmin();
+      fetchMock.mockImplementation(async (url, init) =>
+        url === "/api/admin/users" && !init?.method ? json({}, 500) : handle(url, init)
+      );
+      await userEvent.click(within(panel).getByRole("button", { name: "Make admin alice" }));
+      expect(await within(panel).findByText("Could not load the users. Check that the server is running.")).toBeInTheDocument();
+    });
+
     it("shows a message when the users cannot be loaded, and closes", async () => {
       const { fetchMock, handle } = withAlice();
       fetchMock.mockImplementation(async (url, init) =>
@@ -497,6 +550,16 @@ describe("Workspace", () => {
       state.activity[1] = [{ username: "user", message: "created the board", via_ai: false, created_at: "2026-03-01 12:00:00" }];
       await userEvent.click(within(panel).getByRole("button", { name: "Refresh" }));
       expect(await within(panel).findByText("created the board")).toBeInTheDocument();
+    });
+
+    it("shows a message when refreshing fails", async () => {
+      const { fetchMock, handle } = createFakeServer();
+      renderWorkspace();
+      const panel = await openActivity();
+      await within(panel).findByText("Nothing has happened yet.");
+      fetchMock.mockImplementation(async (url, init) => (url.endsWith("/activity") ? json({}, 500) : handle(url, init)));
+      await userEvent.click(within(panel).getByRole("button", { name: "Refresh" }));
+      expect(await within(panel).findByRole("alert")).toHaveTextContent("Could not load the activity.");
     });
 
     it("shows a message when the activity cannot be loaded, and closes", async () => {

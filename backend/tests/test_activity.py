@@ -1,10 +1,9 @@
 from datetime import date
-from types import SimpleNamespace
 
 from conftest import register
 from fastapi.testclient import TestClient
 
-from app import ai, db
+from app import db
 from app.board import DEFAULT_BOARD, Board, Column, Operation, board_stats, describe_changes
 from app.main import ACTIVITY_SHOWN, app
 
@@ -186,17 +185,8 @@ def test_members_changes_are_logged_under_their_name(signed_in, board_id):
     )
 
 
-def test_ai_changes_are_logged_as_made_with_the_assistant(signed_in, board_id, monkeypatch):
-    move = Operation(type="move_card", card_id="card-1", column_id="col-done")
-    result = ai.ChatResult(reply="Moved it.", operations=[move])
-    fake = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(
-                parse=lambda **_: SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=result))])
-            )
-        )
-    )
-    monkeypatch.setattr(ai, "client", lambda: fake)
+def test_ai_changes_are_logged_as_made_with_the_assistant(signed_in, board_id, fake_ai):
+    fake_ai(operations=[Operation(type="move_card", card_id="card-1", column_id="col-done")])
     signed_in.post(f"/api/boards/{board_id}/chat", json={"message": "Move it"})
     entry = activity(signed_in, board_id)[0]
     assert entry["message"] == 'moved "Align roadmap themes" from "Backlog" to "Done"'

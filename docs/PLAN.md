@@ -283,7 +283,7 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 15: Board sharing with other users (members can view and edit)
 - [x] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [x] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
-- [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
+- [x] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
 - [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
 
 ### Part 12: Accounts and multiple boards
@@ -404,3 +404,16 @@ Checklist:
 - [x] Docs
 
 Results: 178 backend tests (including live), 107 Vitest, 41 Playwright, all passing.
+
+### Part 18: Coverage
+
+Decisions:
+- Backend: `pytest-cov` (dev dependency). `pytest --cov` measures the `app` package with branch coverage and fails below 98% (`[tool.coverage.report] fail_under`). Coverage is not on by default (`addopts`), because then running one test file would fail the threshold. The `__main__` block of `openapi.py` is excluded (a command-line entry point)
+- Frontend: `npm run test:coverage` (v8) over every source file (so untested files count as 0%), excluding tests, `src/test/`, the generated `api-types.ts` and the root `layout.tsx` (only Next.js renders it; every e2e test does). Thresholds: 95% statements, lines and functions, 90% branches. Both thresholds were checked to fail when not met
+- Starting point: backend 99% lines; frontend 95.7% lines / 90.9% branches. Now: backend 99.9% (lines and branches), frontend 98.7% lines / 94.4% branches
+- Gaps filled: `ai.ask` and the chat's 409 when the board changes during the AI's final save (backend); moveCard edge cases, an AI board arriving while a change is unsaved, whitespace-only titles and usernames, and the error paths of the sharing, activity and admin panels (frontend)
+- Unreachable checks removed rather than tested, per the coding standards: two in `moveCard` (columns that `findColumnId` already found; an over-card that is in its column by construction) and the chat sidebar's guard against sending a blank message or while waiting (the Send button is disabled then, and Enter cannot submit a form whose submit button is disabled). The one uncovered backend branch is `match` falling through all seven operation types, which the `Literal` type rules out
+- Left to e2e: dragging cards (`handleDragStart` / `handleDragEnd`, the drag preview) needs real pointer geometry that jsdom lacks; the Playwright drag tests cover it
+- Bug found while measuring: two backend tests left SQLite connections open (`with sqlite3.connect(...)` commits but does not close), reported as `ResourceWarning` only. Test connections now use `closing(sqlite3.connect(path, autocommit=True))`, and pytest's `filterwarnings` turns `ResourceWarning` into a failure (checked: the old `test_board.py` fails with it). The fake AI client moved to `conftest.py` so the chat and activity tests share it
+
+Results: 174 backend tests (180 with live), 116 Vitest, 41 Playwright, all passing; coverage 99.87% backend, 98.69% lines frontend.

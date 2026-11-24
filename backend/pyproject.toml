@@ -14,8 +14,22 @@ dependencies = [
 dev = [
     "httpx2>=2.16.2",
     "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = ["live: calls the real OpenRouter API (needs OPENROUTER_API_KEY)"]
+# A connection or file left open is a bug (in the app or a test), so fail the run.
+filterwarnings = ["error::ResourceWarning", "error::pytest.PytestUnraisableExceptionWarning"]
+
+# `pytest --cov` measures the app (lines and branches) and fails below `fail_under`.
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 98
+show_missing = true
+skip_covered = true
+exclude_also = ['if __name__ == "__main__":']

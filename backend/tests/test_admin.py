@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 
 import pytest
 from conftest import login, register
@@ -119,13 +120,12 @@ def test_admins_delete_their_own_account_from_account_settings(signed_in):
 
 def test_startup_makes_the_demo_account_admin_when_nobody_is(db_path):
     # A database from before admins existed.
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         conn.execute(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT,"
             " session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
         )
         conn.execute("INSERT INTO users (username) VALUES ('user'), ('alice')")
-    conn.close()
     with TestClient(app) as client:
         login(client)
         assert client.get("/api/me").json()["is_admin"] is True

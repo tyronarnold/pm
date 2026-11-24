@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 
 import pytest
 from conftest import login, register
@@ -22,7 +23,7 @@ def test_init_db_creates_file_and_tables(db_path):
     assert not db_path.exists()
     db.init_db()
     assert db_path.exists()
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"users", "boards"} <= tables
 
@@ -30,7 +31,7 @@ def test_init_db_creates_file_and_tables(db_path):
 def make_old_database(db_path, with_version: bool):
     """A database from before multiple boards: one board per user, no name (and maybe no version)."""
     version = "version INTEGER NOT NULL DEFAULT 1," if with_version else ""
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         conn.executescript(
             f"""
             CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,
@@ -43,7 +44,6 @@ def make_old_database(db_path, with_version: bool):
         conn.execute("INSERT INTO boards (user_id, data) VALUES (1, ?)", (DEFAULT_BOARD.model_dump_json(),))
         if with_version:
             conn.execute("UPDATE boards SET version = 7")
-    conn.close()
 
 
 def test_init_db_upgrades_a_database_without_versions(db_path):
@@ -73,7 +73,7 @@ def test_upgraded_database_keeps_the_board_for_the_demo_user(db_path):
 
 
 def test_startup_seeds_the_demo_user_with_a_first_board(client, db_path):
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         assert conn.execute("SELECT username FROM users").fetchall() == [("user",)]
         assert conn.execute("SELECT name FROM boards").fetchall() == [("My first board",)]
 
@@ -311,9 +311,8 @@ def test_boards_saved_before_card_fields_existed_still_load(signed_in, board_id,
     for card in old["cards"].values():
         for field in ("priority", "dueDate", "labels"):
             del card[field]
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         conn.execute("UPDATE boards SET data = ? WHERE id = ?", (json.dumps(old), board_id))
-    conn.close()
     assert signed_in.get(f"/api/boards/{board_id}").json()["board"] == default_board()
 
 

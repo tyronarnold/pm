@@ -23,6 +23,7 @@ docker build -t pm .                       build the image without starting it
 
 docker run --rm pm uv run --no-sync pytest                                 backend tests (live AI tests skipped)
 docker run --rm --env-file .env pm uv run --no-sync pytest                 including live OpenRouter tests
+docker run --rm pm uv run --no-sync pytest --cov                           with coverage (fails below 98%; put --cov last)
 docker run --rm pm uv run --no-sync pytest tests/test_board.py -k <name>  a single backend test
 ```
 
@@ -32,6 +33,7 @@ Frontend, from `frontend/` (after `npm install`):
 npm run lint
 npm run build                               static export to out/ (also type checks)
 npm run test:unit                           vitest
+npm run test:coverage                       vitest with coverage (fails below 95% lines / 90% branches)
 npx vitest run src/lib/kanban.test.ts -t "<name>"     a single unit test
 npm run test:e2e                            playwright (builds the image, runs a throwaway pm-test container on port 8001)
 npx playwright test tests/kanban.spec.ts -g "<name>"  a single e2e test
@@ -51,7 +53,7 @@ Changing Python dependencies: `docker run --rm -v "$PWD/backend:/work" -w /work 
 
 ## Testing notes
 
-- Backend tests use a temporary `DB_PATH` per test (`conftest.py`); use `with TestClient(app) as client` so startup runs. AI tests replace `ai.client` with a fake; real OpenRouter tests are marked `live`.
+- Backend tests use a temporary `DB_PATH` per test (`conftest.py`); use `with TestClient(app) as client` so startup runs. AI tests use the `fake_ai` fixture (`conftest.py`), which replaces `ai.client`; real OpenRouter tests are marked `live`. A `ResourceWarning` (such as an unclosed SQLite connection, in the app or a test) fails the run; open test connections with `closing(sqlite3.connect(path, autocommit=True))`.
 - The kanban and chat e2e tests share the `user` boards, so Playwright runs with one worker and those tests reset them via `resetBoard` in `tests/helpers.ts`; tests that need their own boards call `registerNewUser`. The chat e2e test calls the real AI.
 - Frontend component tests that span several requests use the in-memory fake API in `src/test/fakeServer.ts`.
 - Any `console.error` during a Vitest test fails it (`src/test/setup.ts`), so React warnings such as duplicate keys are caught.

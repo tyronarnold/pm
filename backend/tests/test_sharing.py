@@ -1,3 +1,6 @@
+import sqlite3
+from contextlib import closing
+
 import pytest
 from conftest import login, register
 from fastapi.testclient import TestClient
@@ -151,9 +154,7 @@ def test_deleting_the_owner_account_deletes_shared_boards(client):
 
 
 def test_init_db_adds_the_members_table_to_an_older_database(db_path):
-    import sqlite3
-
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         conn.executescript(
             """
             CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT,
@@ -163,11 +164,9 @@ def test_init_db_adds_the_members_table_to_an_older_database(db_path):
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
             """
         )
-    conn.close()
     with TestClient(app) as client:
         login(client)
         assert client.get("/api/boards").status_code == 200
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    conn.close()
     assert "board_members" in tables

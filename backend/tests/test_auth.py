@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import closing
 
 from conftest import login
 from fastapi.testclient import TestClient
@@ -58,13 +59,12 @@ def test_unknown_user_is_rejected_by_verify_password():
 
 
 def test_startup_adds_a_password_to_an_older_database(db_path):
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
         conn.execute(
             "CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT NOT NULL UNIQUE,"
             " created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
         )
         conn.execute("INSERT INTO users (username) VALUES ('user')")
-    conn.close()
 
     with TestClient(app) as client:
         assert login(client).status_code == 200

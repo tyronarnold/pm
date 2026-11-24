@@ -10,6 +10,7 @@ npm run build        static export to out/
 npm run lint         eslint (ESLint 10; `overrides` in package.json let eslint-config-next's react, import and jsx-a11y plugins accept it, since their latest releases still declare an ESLint 9 peer. The rules Next enables work; eslint-plugin-react's `forward-ref-uses-ref` and `jsx-filename-extension` crash on ESLint 10, so do not enable them. Remove the overrides once those plugins support ESLint 10)
 npm run api:types    regenerate backend/openapi.json and src/lib/api-types.ts after changing backend models (needs Docker; downloads openapi-typescript 7.13.0 with npx, kept out of the dependencies because it declares a TypeScript 5 peer)
 npm run test:unit    vitest (jsdom)
+npm run test:coverage  vitest with v8 coverage over every source file except tests, src/test/, api-types.ts and layout.tsx; fails below 95% statements, lines and functions or 90% branches (report in coverage/, ignored by git)
 npm run test:e2e     playwright; builds the image and runs a throwaway `pm-test` container on http://127.0.0.1:8001 (needs Docker and the root .env); the chat test calls the real AI
 ```
 

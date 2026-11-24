@@ -37,11 +37,12 @@ Backend (in the container image built by the start script):
 docker run --rm pm uv run --no-sync pytest
 ```
 
-Add `--env-file .env` after `--rm` to also run the tests that call OpenRouter (otherwise they are skipped). `pytest -m live` runs only those.
+Add `--env-file .env` after `--rm` to also run the tests that call OpenRouter (otherwise they are skipped). `pytest -m live` runs only those. Add `--cov` at the end for a coverage report (fails below 98%).
 
 Frontend (from `frontend/`, after `npm install`). The e2e tests build the image and run their own throwaway container on port 8001, so your boards on port 8000 are never touched; the chat test calls the real AI:
 
 ```
 npm run test:unit
+npm run test:coverage
 npm run test:e2e
 ```

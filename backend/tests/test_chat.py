@@ -1,6 +1,5 @@
 import json
 from datetime import date
-from types import SimpleNamespace
 
 import httpx2
 import openai
@@ -10,36 +9,6 @@ from fastapi.testclient import TestClient
 from app import ai, db
 from app.board import DEFAULT_BOARD, Board, Operation
 from app.main import app
-
-
-class FakeClient:
-    """Stands in for the OpenAI client: records each request and returns a fixed result."""
-
-    def __init__(self, result: ai.ChatResult | None, while_thinking=None, error=None):
-        self.requests = []
-        self.result = result
-        self.while_thinking = while_thinking
-        self.error = error
-        self.chat = SimpleNamespace(completions=SimpleNamespace(parse=self.parse))
-
-    def parse(self, **kwargs):
-        self.requests.append(kwargs)
-        if self.while_thinking:
-            self.while_thinking()
-        if self.error:
-            raise self.error
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(parsed=self.result))])
-
-
-@pytest.fixture
-def fake_ai(monkeypatch):
-    def install(reply="Done.", operations=(), while_thinking=None, error=None, refuse=False):
-        result = None if refuse else ai.ChatResult(reply=reply, operations=list(operations))
-        fake = FakeClient(result, while_thinking, error)
-        monkeypatch.setattr(ai, "client", lambda: fake)
-        return fake
-
-    return install
 
 
 REQUEST = httpx2.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
@@ -170,6 +139,24 @@ def test_ai_refusal_returns_502_with_a_message_for_the_user(chat, fake_ai):
     response = chat("Hello")
     assert response.status_code == 502
     assert response.json() == {"detail": "The AI could not answer that. Please rephrase and try again."}
+
+
+def test_ask_sends_the_messages_and_returns_the_reply_text(fake_ai):
+    fake = fake_ai()
+    messages = [{"role": "user", "content": "What is 2+2?"}]
+    assert ai.ask(messages) == "4"
+    assert fake.requests == [
+        {"model": "anthropic/claude-haiku-5.5", "messages": messages, "extra_body": {"reasoning": {"effort": "low"}}}
+    ]
+
+
+def test_a_board_changed_during_the_final_save_is_a_409(chat, fake_ai, monkeypatch):
+    fake_ai(operations=[move("card-1", "col-done")])
+    # Someone saves between the chat reading the latest board and saving the AI's changes.
+    monkeypatch.setattr(db, "update_board", lambda *args: None)
+    response = chat("Move it")
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Your board changed while the AI was working. Please try again."}
 
 
 def test_ai_client_has_a_timeout():

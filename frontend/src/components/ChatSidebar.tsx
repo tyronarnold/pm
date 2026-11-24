@@ -26,10 +26,9 @@ export const ChatSidebar = ({ boardId, onBoardUpdate }: ChatSidebarProps) => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Send is disabled while the message is blank or a reply is pending, and Enter
+    // cannot submit a form whose submit button is disabled.
     const message = input.trim();
-    if (!message || isSending) {
-      return;
-    }
     const history = messages;
     setMessages([...history, { role: "user", content: message }]);
     setInput("");

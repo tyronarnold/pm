@@ -78,12 +78,9 @@ export const moveCard = (
     return columns;
   }
 
-  const activeColumn = columns.find((column) => column.id === activeColumnId);
-  const overColumn = columns.find((column) => column.id === overColumnId);
-
-  if (!activeColumn || !overColumn) {
-    return columns;
-  }
+  // findColumnId only returns ids of columns in `columns`.
+  const activeColumn = columns.find((column) => column.id === activeColumnId)!;
+  const overColumn = columns.find((column) => column.id === overColumnId)!;
 
   const isOverColumn = isColumnId(columns, overId);
 
@@ -130,9 +127,8 @@ export const moveCard = (
   if (isOverColumn) {
     nextOverCardIds.push(activeId);
   } else {
-    const overIndex = overColumn.cardIds.indexOf(overId);
-    const insertIndex = overIndex === -1 ? nextOverCardIds.length : overIndex;
-    nextOverCardIds.splice(insertIndex, 0, activeId);
+    // Over a card: overColumn is the column holding it, so it is found.
+    nextOverCardIds.splice(overColumn.cardIds.indexOf(overId), 0, activeId);
   }
 
   return columns.map((column) => {

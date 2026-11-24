@@ -42,6 +42,20 @@ describe("moveCard", () => {
     expect(result[0].cardIds).toEqual(["card-2"]);
     expect(result[1].cardIds).toEqual(["card-3", "card-1"]);
   });
+
+  it("moves a card to the end when dropped on its own column", () => {
+    const result = moveCard(baseColumns, "card-1", "col-a");
+    expect(result[0].cardIds).toEqual(["card-2", "card-1"]);
+    expect(result[1]).toBe(baseColumns[1]);
+  });
+
+  it("changes nothing for a drop in place, unknown ids, or a column as the dragged item", () => {
+    expect(moveCard(baseColumns, "card-1", "card-1")).toBe(baseColumns);
+    expect(moveCard(baseColumns, "card-404", "col-b")).toBe(baseColumns);
+    expect(moveCard(baseColumns, "card-1", "card-404")).toBe(baseColumns);
+    expect(moveCard(baseColumns, "col-a", "card-3")).toBe(baseColumns);
+    expect(moveCard(baseColumns, "col-a", "card-1")).toBe(baseColumns);
+  });
 });
 
 describe("board updates", () => {
