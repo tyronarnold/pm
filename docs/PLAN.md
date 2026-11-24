@@ -284,6 +284,7 @@ Roadmap (one part per working session; check off as done):
 - [ ] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
+- [ ] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header
 
 ### Part 12: Accounts and multiple boards
 
