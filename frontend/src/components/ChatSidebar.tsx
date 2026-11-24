@@ -6,10 +6,11 @@ import { sendChat, type ChatMessage } from "@/lib/api";
 import type { BoardData } from "@/lib/kanban";
 
 type ChatSidebarProps = {
+  boardId: number;
   onBoardUpdate: (board: BoardData, version: number) => void;
 };
 
-export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
+export const ChatSidebar = ({ boardId, onBoardUpdate }: ChatSidebarProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -35,7 +36,7 @@ export const ChatSidebar = ({ onBoardUpdate }: ChatSidebarProps) => {
     setError(null);
     setIsSending(true);
     try {
-      const { reply, board, version } = await sendChat(message, history);
+      const { reply, board, version } = await sendChat(boardId, message, history);
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
       if (board) {
         onBoardUpdate(board, version);

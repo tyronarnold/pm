@@ -1,11 +1,20 @@
 import { useState, type FormEvent } from "react";
+import { ACCOUNT_RULES } from "@/lib/api";
+
+type Submit = (username: string, password: string) => Promise<string | null>;
 
 type LoginFormProps = {
-  // Resolves to null on success, or the message to show.
-  onLogin: (username: string, password: string) => Promise<string | null>;
+  // Each resolves to null on success, or the message to show.
+  onLogin: Submit;
+  onRegister: Submit;
 };
 
-export const LoginForm = ({ onLogin }: LoginFormProps) => {
+const inputClass =
+  "mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]";
+
+// Signs in, or creates an account ("Create an account" switches the form).
+export const LoginForm = ({ onLogin, onRegister }: LoginFormProps) => {
+  const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -13,7 +22,12 @@ export const LoginForm = ({ onLogin }: LoginFormProps) => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    setError((await onLogin(username, password)) ?? "");
+    setError((await (isRegistering ? onRegister : onLogin)(username, password)) ?? "");
+  };
+
+  const switchMode = () => {
+    setIsRegistering((registering) => !registering);
+    setError("");
   };
 
   return (
@@ -28,7 +42,7 @@ export const LoginForm = ({ onLogin }: LoginFormProps) => {
             Kanban Studio
           </h1>
           <p className="mt-2 text-sm text-[var(--gray-text)]">
-            Sign in to see your board.
+            {isRegistering ? "Create an account to start planning." : "Sign in to see your boards."}
           </p>
         </div>
         <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gray-text)]">
@@ -37,7 +51,7 @@ export const LoginForm = ({ onLogin }: LoginFormProps) => {
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             autoComplete="username"
-            className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            className={inputClass}
             required
           />
         </label>
@@ -47,11 +61,12 @@ export const LoginForm = ({ onLogin }: LoginFormProps) => {
             type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            className="mt-2 w-full rounded-xl border border-[var(--stroke)] bg-white px-3 py-2 text-sm font-medium normal-case tracking-normal text-[var(--navy-dark)] outline-none transition focus:border-[var(--primary-blue)]"
+            autoComplete={isRegistering ? "new-password" : "current-password"}
+            className={inputClass}
             required
           />
         </label>
+        {isRegistering && <p className="text-xs leading-5 text-[var(--gray-text)]">{ACCOUNT_RULES}</p>}
         {error && (
           <p role="alert" className="text-sm font-medium text-[var(--secondary-purple)]">
             {error}
@@ -61,8 +76,18 @@ export const LoginForm = ({ onLogin }: LoginFormProps) => {
           type="submit"
           className="w-full rounded-full bg-[var(--secondary-purple)] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110"
         >
-          Sign in
+          {isRegistering ? "Create account" : "Sign in"}
         </button>
+        <p className="text-center text-sm text-[var(--gray-text)]">
+          {isRegistering ? "Already have an account?" : "New here?"}{" "}
+          <button
+            type="button"
+            onClick={switchMode}
+            className="font-semibold text-[var(--primary-blue)] hover:text-[var(--navy-dark)]"
+          >
+            {isRegistering ? "Sign in" : "Create an account"}
+          </button>
+        </p>
       </form>
     </main>
   );

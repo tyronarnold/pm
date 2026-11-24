@@ -27,14 +27,14 @@ import {
 } from "@/lib/kanban";
 
 type KanbanBoardProps = {
+  boardId: number;
   initialBoard: BoardData;
   initialVersion: number;
-  onLogout: () => void;
 };
 
 type Notice = "save-failed" | "conflict" | null;
 
-export const KanbanBoard = ({ initialBoard, initialVersion, onLogout }: KanbanBoardProps) => {
+export const KanbanBoard = ({ boardId, initialBoard, initialVersion }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(initialBoard);
   const [notice, setNotice] = useState<Notice>(null);
   const [activeCardId, setActiveCardId] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export const KanbanBoard = ({ initialBoard, initialVersion, onLogout }: KanbanBo
     while (pending.current) {
       const next = pending.current;
       pending.current = null;
-      const result = await saveBoard(next, version.current);
+      const result = await saveBoard(boardId, next, version.current);
       if (result.status === "saved") {
         version.current = Math.max(version.current, result.version);
         setNotice(null);
@@ -133,103 +133,65 @@ export const KanbanBoard = ({ initialBoard, initialVersion, onLogout }: KanbanBo
   );
 
   return (
-    <div className="relative overflow-hidden">
-      <div className="pointer-events-none absolute left-0 top-0 h-[420px] w-[420px] -translate-x-1/3 -translate-y-1/3 rounded-full bg-[radial-gradient(circle,_rgba(32,157,215,0.25)_0%,_rgba(32,157,215,0.05)_55%,_transparent_70%)]" />
-      <div className="pointer-events-none absolute bottom-0 right-0 h-[520px] w-[520px] translate-x-1/4 translate-y-1/4 rounded-full bg-[radial-gradient(circle,_rgba(117,57,145,0.18)_0%,_rgba(117,57,145,0.05)_55%,_transparent_75%)]" />
+    <div className="flex flex-col gap-6">
+      <ul aria-label="Columns" className="flex flex-wrap items-center gap-4">
+        {board.columns.map((column) => (
+          <li
+            key={column.id}
+            className="flex items-center gap-2 rounded-full bg-[var(--nav-chip)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
+          >
+            <span className="h-2 w-2 rounded-full bg-[var(--accent-yellow)]" />
+            {column.title}
+          </li>
+        ))}
+      </ul>
+      {notice === "save-failed" && (
+        <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
+          Could not save your changes. Check that the server is running and try again.
+        </p>
+      )}
+      {notice === "conflict" && (
+        <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
+          Your board was changed somewhere else, so the latest version has been loaded. Your
+          last change may need to be made again.
+        </p>
+      )}
 
-      <main className="relative mx-auto flex min-h-screen max-w-[1800px] flex-col gap-10 px-6 pb-16 pt-12">
-        <header className="flex flex-col gap-6 rounded-[32px] border border-[var(--stroke)] bg-white/80 p-8 shadow-[var(--shadow)] backdrop-blur">
-          <div className="flex flex-wrap items-start justify-between gap-6">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-[var(--gray-text)]">
-                Single Board Kanban
-              </p>
-              <h1 className="mt-3 font-display text-4xl font-semibold text-[var(--navy-dark)]">
-                Kanban Studio
-              </h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--gray-text)]">
-                Keep momentum visible. Rename columns, drag cards between stages,
-                and capture quick notes without getting buried in settings.
-              </p>
-            </div>
-            <div className="flex items-start gap-4">
-              <div className="rounded-2xl border border-[var(--stroke)] bg-[var(--surface)] px-5 py-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gray-text)]">
-                  Focus
-                </p>
-                <p className="mt-2 text-lg font-semibold text-[var(--primary-blue)]">
-                  One board. Five columns. Zero clutter.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onLogout}
-                className="rounded-full bg-[var(--logout)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110"
-              >
-                Log out
-              </button>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            {board.columns.map((column) => (
-              <div
-                key={column.id}
-                className="flex items-center gap-2 rounded-full bg-[var(--nav-chip)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white"
-              >
-                <span className="h-2 w-2 rounded-full bg-[var(--accent-yellow)]" />
-                {column.title}
-              </div>
-            ))}
-          </div>
-          {notice === "save-failed" && (
-            <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
-              Could not save your changes. Check that the server is running and try again.
-            </p>
-          )}
-          {notice === "conflict" && (
-            <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
-              Your board was changed somewhere else, so the latest version has been loaded. Your
-              last change may need to be made again.
-            </p>
-          )}
-        </header>
-
-        <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-start">
-          <div className="min-w-0 flex-1">
-            <DndContext
-              id={dndContextId}
-              sensors={sensors}
-              collisionDetection={closestCorners}
-              onDragStart={handleDragStart}
-              onDragEnd={handleDragEnd}
-            >
-              <section className="grid gap-6 lg:grid-cols-5">
-                {board.columns.map((column) => (
-                  <KanbanColumn
-                    key={column.id}
-                    column={column}
-                    cards={column.cardIds.map((cardId) => board.cards[cardId])}
-                    onRename={handleRenameColumn}
-                    onRenameDone={() => persist(board)}
-                    onAddCard={handleAddCard}
-                    onDeleteCard={handleDeleteCard}
-                    onEditCard={handleEditCard}
-                  />
-                ))}
-              </section>
-              <DragOverlay>
-                {activeCard && activeColumn ? (
-                  <div className="w-[260px]">
-                    <KanbanCardPreview card={activeCard} color={columnColors[activeColumn.id]} />
-                  </div>
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          </div>
-          {/* The backend has already saved the board the AI returns, so it is not saved again. */}
-          <ChatSidebar onBoardUpdate={replaceBoard} />
+      <div className="flex flex-col gap-6 2xl:flex-row 2xl:items-start">
+        <div className="min-w-0 flex-1">
+          <DndContext
+            id={dndContextId}
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <section className="grid gap-6 lg:grid-cols-5">
+              {board.columns.map((column) => (
+                <KanbanColumn
+                  key={column.id}
+                  column={column}
+                  cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  onRename={handleRenameColumn}
+                  onRenameDone={() => persist(board)}
+                  onAddCard={handleAddCard}
+                  onDeleteCard={handleDeleteCard}
+                  onEditCard={handleEditCard}
+                />
+              ))}
+            </section>
+            <DragOverlay>
+              {activeCard && activeColumn ? (
+                <div className="w-[260px]">
+                  <KanbanCardPreview card={activeCard} color={columnColors[activeColumn.id]} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         </div>
-      </main>
+        {/* The backend has already saved the board the AI returns, so it is not saved again. */}
+        <ChatSidebar boardId={boardId} onBoardUpdate={replaceBoard} />
+      </div>
     </div>
   );
 };

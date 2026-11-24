@@ -1,20 +1,14 @@
 import sqlite3
 
-import pytest
+from conftest import login
 from fastapi.testclient import TestClient
 
 from app import auth, db
 from app.main import app
 
 
-@pytest.fixture
-def client():
-    with TestClient(app) as client:
-        yield client
-
-
-def login(client, username="user", password="password"):
-    return client.post("/api/login", json={"username": username, "password": password})
+def demo_hash() -> str:
+    return db.find_user("user")[1]
 
 
 def test_login_success_sets_session_cookie(client):
@@ -52,7 +46,7 @@ def test_logout_clears_session(client):
 
 
 def test_password_is_stored_as_an_argon2_hash(client):
-    stored = db.get_password_hash("user")
+    stored = demo_hash()
     assert stored.startswith("$argon2id$")
     assert "password" not in stored
     assert auth.verify_password(stored, "password")
@@ -74,11 +68,11 @@ def test_startup_adds_a_password_to_an_older_database(db_path):
 
     with TestClient(app) as client:
         assert login(client).status_code == 200
-    assert db.get_password_hash("user").startswith("$argon2id$")
+    assert demo_hash().startswith("$argon2id$")
 
 
 def test_startup_keeps_an_existing_password(client):
-    db.add_user("user", auth.hash_password("changed"))  # does not replace the existing hash
+    db.ensure_password("user", auth.hash_password("changed"))  # does not replace the existing hash
     assert login(client).status_code == 200
     with TestClient(app) as restarted:
         assert login(restarted).status_code == 200

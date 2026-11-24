@@ -5,10 +5,39 @@ import type { BoardData } from "@/lib/kanban";
 type Schemas = components["schemas"];
 // The version goes up by one on every save; saves must say which version they are based on.
 export type VersionedBoard = Schemas["VersionedBoard"];
+export type BoardDetail = Schemas["BoardDetail"];
+export type BoardSummary = Schemas["BoardSummary"];
 export type ChatMessage = Schemas["ChatMessage"];
 type ChatRequest = Schemas["ChatRequest"];
 type ChatResponse = Schemas["ChatResponse"];
 type Credentials = Schemas["Credentials"];
+type NewAccount = Schemas["NewAccount"];
+type PasswordChange = Schemas["PasswordChange"];
+type PasswordConfirmation = Schemas["PasswordConfirmation"];
+type BoardName = Schemas["BoardName"];
+
+const send = (url: string, method: string, body?: unknown) =>
+  fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+// The server's `detail` when it is a message (validation errors are a list), else the fallback.
+const errorMessage = async (response: Response, fallback: string) => {
+  const body = await response.json().catch(() => ({}));
+  return typeof body.detail === "string" ? body.detail : fallback;
+};
+
+// Throws if the request failed, so callers can show a load error.
+const ok = (response: Response, what: string) => {
+  if (!response.ok) {
+    throw new Error(`${what} failed with ${response.status}`);
+  }
+  return response;
+};
+
+// Accounts. Each action returns null on success, or a message for the user.
 
 export const getCurrentUser = async (): Promise<string | null> => {
   const response = await fetch("/api/me");
@@ -19,31 +48,52 @@ export const getCurrentUser = async (): Promise<string | null> => {
   return data.username;
 };
 
-// Returns null on success, or a message for the user (wrong credentials, or too many attempts).
 export const login = async (username: string, password: string): Promise<string | null> => {
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password } satisfies Credentials),
-  });
-  if (response.ok) {
-    return null;
-  }
-  const body = await response.json().catch(() => ({}));
-  return typeof body.detail === "string" ? body.detail : "Invalid username or password.";
+  const response = await send("/api/login", "POST", { username, password } satisfies Credentials);
+  return response.ok ? null : errorMessage(response, "Invalid username or password.");
+};
+
+export const ACCOUNT_RULES =
+  "Usernames are 3-32 lowercase letters, digits, dots, dashes or underscores. Passwords need at least 8 characters.";
+
+export const register = async (username: string, password: string): Promise<string | null> => {
+  const response = await send("/api/register", "POST", { username, password } satisfies NewAccount);
+  return response.ok ? null : errorMessage(response, ACCOUNT_RULES);
 };
 
 export const logout = async () => {
   await fetch("/api/logout", { method: "POST" });
 };
 
-// Throws if the board could not be loaded.
-export const getBoard = async (): Promise<VersionedBoard> => {
-  const response = await fetch("/api/board");
-  if (!response.ok) {
-    throw new Error(`Loading the board failed with ${response.status}`);
-  }
-  return response.json();
+export const changePassword = async (current: string, next: string): Promise<string | null> => {
+  const response = await send("/api/me/password", "PUT", {
+    current_password: current,
+    new_password: next,
+  } satisfies PasswordChange);
+  return response.ok ? null : errorMessage(response, "Passwords need at least 8 characters.");
+};
+
+export const deleteAccount = async (password: string): Promise<string | null> => {
+  const response = await send("/api/me", "DELETE", { password } satisfies PasswordConfirmation);
+  return response.ok ? null : errorMessage(response, "Could not delete the account.");
+};
+
+// Boards. These throw if the request fails.
+
+export const listBoards = async (): Promise<BoardSummary[]> =>
+  ok(await fetch("/api/boards"), "Loading the boards").json();
+
+export const getBoard = async (id: number): Promise<BoardDetail> =>
+  ok(await fetch(`/api/boards/${id}`), "Loading the board").json();
+
+export const createBoard = async (name: string): Promise<BoardDetail> =>
+  ok(await send("/api/boards", "POST", { name } satisfies BoardName), "Creating the board").json();
+
+export const renameBoard = async (id: number, name: string): Promise<BoardSummary> =>
+  ok(await send(`/api/boards/${id}`, "PATCH", { name } satisfies BoardName), "Renaming the board").json();
+
+export const deleteBoard = async (id: number): Promise<void> => {
+  ok(await fetch(`/api/boards/${id}`, { method: "DELETE" }), "Deleting the board");
 };
 
 const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again.";
@@ -51,22 +101,18 @@ const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again."
 // `board` is null when the AI made no changes. On failure, throws an Error whose
 // message can be shown to the user (the server's `detail` when it sends one).
 export const sendChat = async (
+  boardId: number,
   message: string,
   history: ChatMessage[]
 ): Promise<ChatResponse> => {
   let response: Response;
   try {
-    response = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, history } satisfies ChatRequest),
-    });
+    response = await send(`/api/boards/${boardId}/chat`, "POST", { message, history } satisfies ChatRequest);
   } catch {
     throw new Error(CHAT_UNAVAILABLE);
   }
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(typeof body.detail === "string" ? body.detail : CHAT_UNAVAILABLE);
+    throw new Error(await errorMessage(response, CHAT_UNAVAILABLE));
   }
   return response.json();
 };
@@ -76,13 +122,13 @@ export type SaveResult =
   | { status: "conflict"; version: number; board: BoardData } // the board changed elsewhere
   | { status: "error" };
 
-export const saveBoard = async (board: BoardData, version: number): Promise<SaveResult> => {
+export const saveBoard = async (
+  boardId: number,
+  board: BoardData,
+  version: number
+): Promise<SaveResult> => {
   try {
-    const response = await fetch("/api/board", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ version, board } satisfies VersionedBoard),
-    });
+    const response = await send(`/api/boards/${boardId}`, "PUT", { version, board } satisfies VersionedBoard);
     if (response.ok) {
       const saved: VersionedBoard = await response.json();
       return { status: "saved", version: saved.version };

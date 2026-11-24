@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => {
   await signIn(page);
   await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
   await resetBoard(page);
-  await page.reload();
+  await page.goto("/");
 });
 
 const dragCard = async (page: Page, cardTestId: string, columnTestId: string) => {
@@ -58,7 +58,7 @@ test("renames a column", async ({ page }) => {
   await title.fill("Ideas");
   await saved(page, () => title.press("Enter"));
   await expect(title).toHaveValue("Ideas");
-  await expect(page.locator("header").getByText("Ideas")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Columns" }).getByText("Ideas")).toBeVisible();
 });
 
 test("keeps every change after a reload", async ({ page }) => {
@@ -104,7 +104,7 @@ test("a stale tab loads the latest board instead of overwriting it", async ({ pa
   await saved(page, () => card.getByRole("button", { name: "Save" }).click());
 
   const conflict = other.waitForResponse(
-    (r) => r.url().endsWith("/api/board") && r.request().method() === "PUT"
+    (r) => /\/api\/boards\/\d+$/.test(r.url()) && r.request().method() === "PUT"
   );
   await other
     .getByRole("button", { name: "Delete Gather customer signals", exact: true })

@@ -268,3 +268,44 @@ From the self-review in `docs/tutorial.md`, section 7:
 Notes for working on the project:
 - ESLint stays on 10 (9 is no longer supported) with npm `overrides` for the ESLint peer of eslint-config-next's react, import and jsx-a11y plugins, whose latest releases still declare up to ESLint 9. This removes the `npm ci` peer warnings; see `frontend/AGENTS.md` for the two eslint-plugin-react rules that do not work on ESLint 10
 - On Windows, run Vitest from an uppercase `C:\` path (PowerShell or cmd); Git Bash's lowercase `c:\` loads Vitest twice and breaks the jest-dom matchers
+
+---
+
+## Part 12 onwards: from MVP to a full project management app (user request)
+
+The user asked to "significantly improve this project: user management, multiple Kanban boards per user, and other features for a comprehensive project management app, testing thoroughly with strong coverage and good integration tests". This lifts the MVP limitations in AGENTS.md (one hardcoded user, one board). Each part keeps the coding standards: simple code, no speculative options, tests with every change.
+
+Roadmap (one part per working session; check off as done):
+
+- [x] Part 12: Accounts and multiple boards
+- [ ] Part 13: Richer cards (priority, due date, labels) and board search / filter
+- [ ] Part 14: Editable columns (add, rename, remove, reorder) per board
+- [ ] Part 15: Board sharing with other users (members can view and edit)
+- [ ] Part 16: Admin user management (admin role, list users, reset password, delete user)
+- [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
+- [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
+
+### Part 12: Accounts and multiple boards
+
+Decisions:
+- Anyone can create an account (`POST /api/register`): username 3-32 characters of lowercase letters, digits, `.`, `_`, `-`; password at least 8 characters. Registering signs you in. The seeded `user` / `password` account stays for the demo and the tests
+- The session stores the user id; `current_user` loads the user from the database on every request, so a deleted account is signed out everywhere
+- Account settings: change password (needs the current password), delete account (needs the password; deletes the user's boards)
+- A user has any number of boards. Each board has a name, its JSON data and a version. Routes move under `/api/boards/{id}`; a board that is not yours is a 404
+- New boards get the five standard columns and no cards. A new account starts with one board, "My first board", holding the sample cards
+- Existing databases are upgraded at startup: the `boards` table is rebuilt without the one-board-per-user constraint, and the existing board is named "My board"
+- Frontend: the selected board is kept in the URL (`?board=<id>`) so a reload stays on it. The header has a board switcher, buttons to create, rename and delete boards, and an account menu
+
+Checklist:
+- [x] Backend: schema and migration, account routes, board routes, chat per board
+- [x] Frontend: sign up, account settings, board switcher, create / rename / delete board
+- [x] Tests: pytest, Vitest and Playwright for the above
+- [x] Docs: AGENTS.md files, DATABASE.md, README
+
+Notes:
+- Board actions use `window.confirm` for deletes (board and account): no extra dialog component, and Playwright accepts or dismisses it with `page.on("dialog")`
+- The column name chips moved out of the header into `KanbanBoard` (a list labelled "Columns"), since the header now belongs to the workspace rather than one board
+- Frontend tests that span several requests use an in-memory fake of the API (`src/test/fakeServer.ts`) instead of per-test `fetch` stubs
+- Board e2e tests register their own account, so they do not depend on or disturb the shared `user` boards
+- Checked on the real app: the existing database (one board at version 48, 10 cards) was upgraded in place; the board kept its id, version and cards and is named "My board". A backup was taken first
+- Results: 101 backend tests (including live), 58 Vitest, 26 Playwright, all passing

@@ -13,7 +13,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 const chatBodies = () =>
   fetchMock.mock.calls
-    .filter(([url]) => url === "/api/chat")
+    .filter(([url]) => url === "/api/boards/1/chat")
     .map(([, init]) => JSON.parse(init.body));
 
 const send = async (text: string) => {
@@ -32,7 +32,7 @@ afterEach(() => {
 
 describe("ChatSidebar", () => {
   it("shows the sent message and the reply", async () => {
-    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={() => {}} />);
     await send("Hello there");
 
     const log = screen.getByRole("log");
@@ -43,7 +43,7 @@ describe("ChatSidebar", () => {
   });
 
   it("sends the conversation so far as history", async () => {
-    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={() => {}} />);
     await send("First");
     await screen.findByText("Sure thing.");
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { reply: "Second reply", board: null, version: 2 }));
@@ -61,7 +61,7 @@ describe("ChatSidebar", () => {
 
   it("passes the returned board to onBoardUpdate", async () => {
     const onBoardUpdate = vi.fn();
-    render(<ChatSidebar onBoardUpdate={onBoardUpdate} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={onBoardUpdate} />);
     await send("Do something");
     await screen.findByText("Sure thing.");
     expect(onBoardUpdate).toHaveBeenCalledWith(initialData, 2);
@@ -70,7 +70,7 @@ describe("ChatSidebar", () => {
   it("does not replace the board when the AI made no changes", async () => {
     const onBoardUpdate = vi.fn();
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { reply: "You have 8 cards.", board: null, version: 1 }));
-    render(<ChatSidebar onBoardUpdate={onBoardUpdate} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={onBoardUpdate} />);
     await send("How many cards?");
     await screen.findByText("You have 8 cards.");
     expect(onBoardUpdate).not.toHaveBeenCalled();
@@ -79,7 +79,7 @@ describe("ChatSidebar", () => {
   it("shows a loading indicator while waiting", async () => {
     let respond: (response: Response) => void = () => {};
     fetchMock.mockReturnValueOnce(new Promise<Response>((resolve) => (respond = resolve)));
-    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={() => {}} />);
     await send("Slow question");
 
     expect(screen.getByRole("status")).toHaveTextContent("Thinking...");
@@ -93,7 +93,7 @@ describe("ChatSidebar", () => {
   it("shows an error when the request fails", async () => {
     const onBoardUpdate = vi.fn();
     fetchMock.mockResolvedValueOnce(jsonResponse(500, {}));
-    render(<ChatSidebar onBoardUpdate={onBoardUpdate} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={onBoardUpdate} />);
     await send("Break please");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("could not be reached");
@@ -108,7 +108,7 @@ describe("ChatSidebar", () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(502, { detail: "The AI took too long to reply. Please try again." })
     );
-    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={() => {}} />);
     await send("Hello");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The AI took too long to reply. Please try again."
@@ -117,7 +117,7 @@ describe("ChatSidebar", () => {
 
   it("shows a friendly message when the server cannot be reached", async () => {
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={() => {}} />);
     await send("Hello");
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The assistant could not be reached. Please try again."
@@ -125,7 +125,7 @@ describe("ChatSidebar", () => {
   });
 
   it("can be hidden and shown again, keeping the conversation", async () => {
-    render(<ChatSidebar onBoardUpdate={() => {}} />);
+    render(<ChatSidebar boardId={1} onBoardUpdate={() => {}} />);
     await send("Remember me");
     await screen.findByText("Sure thing.");
 

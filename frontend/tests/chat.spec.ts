@@ -3,7 +3,7 @@ import { resetBoard, signIn } from "./helpers";
 
 // Does not call the AI: the chat request is answered with the error the backend sends on an AI timeout.
 test("shows the server's message when the AI call fails", async ({ page }) => {
-  await page.route("**/api/chat", (route) =>
+  await page.route("**/api/boards/*/chat", (route) =>
     route.fulfill({
       status: 502,
       contentType: "application/json",
@@ -22,7 +22,7 @@ test("AI chat creates a card and moves it to Done", async ({ page }) => {
   await signIn(page);
   await expect(page.locator('[data-testid^="column-"]')).toHaveCount(5);
   await resetBoard(page);
-  await page.reload();
+  await page.goto("/");
 
   const chat = page.getByRole("complementary", { name: "AI chat" });
   await chat

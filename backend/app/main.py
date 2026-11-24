@@ -1,27 +1,39 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import ai, auth, db
-from app.board import DEFAULT_BOARD, Board, apply_operations, column_ids
+from app.board import DEFAULT_BOARD, EMPTY_BOARD, Board, apply_operations, column_ids
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
-# The MVP's single account. Its password is only used to set the stored hash the
-# first time (or for databases created before passwords were hashed).
-USERNAME = "user"
-DEFAULT_PASSWORD = "password"
+# The demo account, created at startup if missing. Its password is only used to set the
+# stored hash the first time (or for databases created before passwords were hashed).
+DEMO_USERNAME = "user"
+DEMO_PASSWORD = "password"
+FIRST_BOARD_NAME = "My first board"
+
+
+def create_account(username: str, password: str) -> db.User | None:
+    """Create a user with a first board holding the sample cards; None if the username is taken."""
+    user_id = db.create_user(username, auth.hash_password(password))
+    if user_id is None:
+        return None
+    db.create_board(user_id, FIRST_BOARD_NAME, DEFAULT_BOARD.model_dump_json())
+    return db.User(user_id, username)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
-    db.add_user(USERNAME, auth.hash_password(DEFAULT_PASSWORD))
+    if create_account(DEMO_USERNAME, DEMO_PASSWORD) is None:
+        db.ensure_password(DEMO_USERNAME, auth.hash_password(DEMO_PASSWORD))
     yield
 
 
@@ -34,21 +46,74 @@ app.add_middleware(
 )
 
 
-class Credentials(BaseModel):
-    username: str
-    password: str
-
-
-def current_user(request: Request) -> str:
-    username = request.session.get("username")
-    if not username:
+def current_user(request: Request) -> db.User:
+    """The signed-in user, loaded on every request so a deleted account is signed out everywhere."""
+    user_id = request.session.get("user_id")
+    user = db.get_user(user_id) if user_id else None
+    if user is None:
         raise HTTPException(status_code=401, detail="Not signed in")
-    return username
+    return user
+
+
+CurrentUser = Annotated[db.User, Depends(current_user)]
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# Accounts
+
+Username = Annotated[str, Field(pattern=r"^[a-z0-9._-]{3,32}$")]
+NewPassword = Annotated[str, Field(min_length=8, max_length=128)]
+
+
+class Credentials(BaseModel):
+    username: str
+    password: str
+
+
+class NewAccount(BaseModel):
+    username: Username
+    password: NewPassword
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: NewPassword
+
+
+class PasswordConfirmation(BaseModel):
+    password: str
+
+
+class Account(BaseModel):
+    username: str
+
+
+def sign_in(request: Request, user: db.User) -> Account:
+    request.session.clear()
+    request.session["user_id"] = user.id
+    return Account(username=user.username)
+
+
+def check_password(user: db.User, password: str) -> None:
+    if not auth.verify_password(db.get_password_hash(user.id), password):
+        raise HTTPException(status_code=403, detail="That password is not correct.")
+
+
+@app.post(
+    "/api/register",
+    status_code=201,
+    responses={409: {"description": "Username taken"}, 422: {"description": "Invalid username or password"}},
+)
+def register(account: NewAccount, request: Request) -> Account:
+    """Create an account and sign in to it."""
+    user = create_account(account.username, account.password)
+    if user is None:
+        raise HTTPException(status_code=409, detail="That username is already taken.")
+    return sign_in(request, user)
 
 
 @app.post(
@@ -58,19 +123,19 @@ def health():
         429: {"description": "Too many failed attempts for this username"},
     },
 )
-def login(credentials: Credentials, request: Request):
+def login(credentials: Credentials, request: Request) -> Account:
     username = credentials.username
     if auth.is_locked_out(username):
         raise HTTPException(
             status_code=429,
             detail="Too many failed sign-in attempts. Please wait 15 minutes and try again.",
         )
-    if not auth.verify_password(db.get_password_hash(username), credentials.password):
+    found = db.find_user(username)
+    if not auth.verify_password(found[1] if found else None, credentials.password):
         auth.record_failure(username)
         raise HTTPException(status_code=401, detail="Invalid username or password.")
     auth.clear_failures(username)
-    request.session["username"] = username
-    return {"username": username}
+    return sign_in(request, found[0])
 
 
 @app.post("/api/logout")
@@ -80,8 +145,46 @@ def logout(request: Request):
 
 
 @app.get("/api/me")
-def me(username: str = Depends(current_user)):
-    return {"username": username}
+def me(user: CurrentUser) -> Account:
+    return Account(username=user.username)
+
+
+@app.put("/api/me/password", responses={403: {"description": "Current password is wrong"}})
+def change_password(change: PasswordChange, user: CurrentUser):
+    check_password(user, change.current_password)
+    db.set_password_hash(user.id, auth.hash_password(change.new_password))
+    return {"status": "ok"}
+
+
+@app.delete("/api/me", status_code=204, responses={403: {"description": "Password is wrong"}})
+def delete_account(confirmation: PasswordConfirmation, request: Request, user: CurrentUser):
+    """Delete the account and all its boards, and sign out."""
+    check_password(user, confirmation.password)
+    db.delete_user(user.id)
+    request.session.clear()
+    return Response(status_code=204)
+
+
+# Boards
+
+BoardNameText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+
+class BoardName(BaseModel):
+    name: BoardNameText
+
+
+class BoardSummary(BaseModel):
+    id: int
+    name: str
+    updated_at: str
+
+
+class BoardDetail(BaseModel):
+    id: int
+    name: str
+    version: int
+    board: Board
 
 
 class VersionedBoard(BaseModel):
@@ -91,31 +194,68 @@ class VersionedBoard(BaseModel):
     board: Board
 
 
-def load_board(username: str) -> VersionedBoard:
-    row = db.get_board(username)
+NOT_FOUND = {404: {"description": "No such board (or not yours)"}}
+
+
+def find_board(user: db.User, board_id: int) -> db.BoardRow:
+    row = db.get_board(user.id, board_id)
     if row is None:
-        db.create_board(username, DEFAULT_BOARD.model_dump_json())
-        return VersionedBoard(version=1, board=DEFAULT_BOARD)
-    data, version = row
-    return VersionedBoard(version=version, board=Board.model_validate_json(data))
+        raise HTTPException(status_code=404, detail="Board not found")
+    return row
 
 
-@app.get("/api/board")
-def get_board(username: str = Depends(current_user)) -> VersionedBoard:
-    return load_board(username)
+def detail(row: db.BoardRow) -> BoardDetail:
+    return BoardDetail(id=row.id, name=row.name, version=row.version, board=Board.model_validate_json(row.data))
 
 
-@app.put("/api/board", responses={409: {"description": "Board changed since `version`; body has the current board"}})
-def put_board(update: VersionedBoard, username: str = Depends(current_user)):
+@app.get("/api/boards")
+def list_boards(user: CurrentUser) -> list[BoardSummary]:
+    return [BoardSummary(id=row.id, name=row.name, updated_at=row.updated_at) for row in db.list_boards(user.id)]
+
+
+@app.post("/api/boards", status_code=201)
+def create_board(new: BoardName, user: CurrentUser) -> BoardDetail:
+    """Create a board with the standard columns and no cards."""
+    board_id = db.create_board(user.id, new.name, EMPTY_BOARD.model_dump_json())
+    return detail(find_board(user, board_id))
+
+
+@app.get("/api/boards/{board_id}", responses=NOT_FOUND)
+def get_board(board_id: int, user: CurrentUser) -> BoardDetail:
+    return detail(find_board(user, board_id))
+
+
+@app.patch("/api/boards/{board_id}", responses=NOT_FOUND)
+def rename_board(board_id: int, new: BoardName, user: CurrentUser) -> BoardSummary:
+    if not db.rename_board(user.id, board_id, new.name):
+        raise HTTPException(status_code=404, detail="Board not found")
+    row = find_board(user, board_id)
+    return BoardSummary(id=row.id, name=row.name, updated_at=row.updated_at)
+
+
+@app.delete("/api/boards/{board_id}", status_code=204, responses=NOT_FOUND)
+def delete_board(board_id: int, user: CurrentUser):
+    if not db.delete_board(user.id, board_id):
+        raise HTTPException(status_code=404, detail="Board not found")
+    return Response(status_code=204)
+
+
+@app.put(
+    "/api/boards/{board_id}",
+    responses={**NOT_FOUND, 409: {"description": "Board changed since `version`; body has the current board"}},
+)
+def save_board(board_id: int, update: VersionedBoard, user: CurrentUser) -> VersionedBoard:
     """Save the board if it is still at `update.version` (optimistic concurrency)."""
-    if column_ids(update.board) != column_ids(load_board(username).board):
+    current = detail(find_board(user, board_id))
+    if column_ids(update.board) != column_ids(current.board):
         raise HTTPException(status_code=422, detail="Columns cannot be added, removed or reordered")
-    version = db.update_board(username, update.board.model_dump_json(), update.version)
+    version = db.update_board(user.id, board_id, update.board.model_dump_json(), update.version)
     if version is None:
-        current = load_board(username)
+        current = detail(find_board(user, board_id))
         return JSONResponse(
             status_code=409,
-            content={"detail": "Board changed since this version", **current.model_dump()},
+            content={"detail": "Board changed since this version", "version": current.version,
+                     "board": current.board.model_dump()},
         )
     return VersionedBoard(version=version, board=update.board)
 
@@ -140,20 +280,23 @@ def skipped_note(count: int) -> str:
     )
 
 
-@app.post("/api/chat", responses={502: {"description": "The AI call failed; `detail` is a message for the user"}})
-def chat(request: ChatRequest, username: str = Depends(current_user)) -> ChatResponse:
+@app.post(
+    "/api/boards/{board_id}/chat",
+    responses={**NOT_FOUND, 502: {"description": "The AI call failed; `detail` is a message for the user"}},
+)
+def chat(board_id: int, request: ChatRequest, user: CurrentUser) -> ChatResponse:
     try:
-        result = ai.chat(load_board(username).board, request.history, request.message)
+        result = ai.chat(detail(find_board(user, board_id)).board, request.history, request.message)
     except ai.AIError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
     # The user may have saved changes while the AI was working, so apply its
     # operations to the latest saved board rather than the one it was shown.
-    latest = load_board(username)
+    latest = detail(find_board(user, board_id))
     updated, skipped = apply_operations(latest.board, result.operations)
     reply = result.reply + (skipped_note(len(skipped)) if skipped else "")
     if updated == latest.board:
         return ChatResponse(reply=reply, board=None, version=latest.version)
-    version = db.update_board(username, updated.model_dump_json(), latest.version)
+    version = db.update_board(user.id, board_id, updated.model_dump_json(), latest.version)
     if version is None:
         raise HTTPException(
             status_code=409, detail="Your board changed while the AI was working. Please try again."

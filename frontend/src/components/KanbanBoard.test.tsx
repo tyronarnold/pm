@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) =>
 
 const puts = (): { version: number; board: BoardData }[] =>
   fetchMock.mock.calls
-    .filter(([url, init]) => url === "/api/board" && init?.method === "PUT")
+    .filter(([url, init]) => url === "/api/boards/1" && init?.method === "PUT")
     .map(([, init]) => JSON.parse(init.body));
 
 const savedBoards = () => puts().map((put) => put.board);
@@ -20,11 +20,11 @@ const savedBoards = () => puts().map((put) => put.board);
 const lastSaved = () => savedBoards().at(-1)!;
 
 const renderBoard = () =>
-  render(<KanbanBoard initialBoard={initialData} initialVersion={1} onLogout={() => {}} />);
+  render(<KanbanBoard boardId={1} initialBoard={initialData} initialVersion={1} />);
 
 // Behaves like the backend: a save based on version n is stored as version n + 1.
 const fakeServer = async (url: string, init?: RequestInit) => {
-  if (url === "/api/board" && init?.method === "PUT") {
+  if (url === "/api/boards/1" && init?.method === "PUT") {
     const body = JSON.parse(init.body as string);
     return json({ version: body.version + 1, board: body.board });
   }

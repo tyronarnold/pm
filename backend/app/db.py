@@ -2,23 +2,54 @@ import os
 import sqlite3
 from contextlib import closing
 from pathlib import Path
+from typing import NamedTuple
 
-SCHEMA = """
+USERS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+"""
 
+BOARDS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS boards (
     id INTEGER PRIMARY KEY,
-    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
     data TEXT NOT NULL,
     version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS boards_user_id ON boards (user_id);
 """
+
+# Databases from before multiple boards had one board per user (`user_id UNIQUE`) and no
+# name. SQLite cannot drop a constraint, so the table is rebuilt, keeping every board.
+MULTIPLE_BOARDS_MIGRATION = f"""
+BEGIN;
+ALTER TABLE boards RENAME TO boards_old;
+{BOARDS_SCHEMA}
+INSERT INTO boards (id, user_id, name, data, version, updated_at)
+    SELECT id, user_id, 'My board', data, version, updated_at FROM boards_old;
+DROP TABLE boards_old;
+COMMIT;
+"""
+
+
+class User(NamedTuple):
+    id: int
+    username: str
+
+
+class BoardRow(NamedTuple):
+    id: int
+    name: str
+    data: str
+    version: int
+    updated_at: str
 
 
 def connect() -> sqlite3.Connection:
@@ -29,58 +60,112 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
-def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
-    """Upgrade databases created before `column` existed; their data is kept."""
-    if column not in [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
 
 
 def init_db() -> None:
+    """Create the tables if missing, and upgrade databases made by earlier versions."""
     with closing(connect()) as conn:
-        conn.executescript(SCHEMA)
-        _add_column_if_missing(conn, "boards", "version", "INTEGER NOT NULL DEFAULT 1")
-        _add_column_if_missing(conn, "users", "password_hash", "TEXT")
+        conn.executescript(USERS_SCHEMA)
+        if "password_hash" not in _columns(conn, "users"):
+            conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+        old_boards = _columns(conn, "boards")
+        if old_boards and "name" not in old_boards:
+            if "version" not in old_boards:
+                conn.execute("ALTER TABLE boards ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
+            conn.executescript(MULTIPLE_BOARDS_MIGRATION)
+        conn.executescript(BOARDS_SCHEMA)
 
 
-def add_user(username: str, password_hash: str | None = None) -> None:
-    """Create the user if missing. A password hash is only set if the user has none yet."""
+# Users
+
+
+def create_user(username: str, password_hash: str) -> int | None:
+    """Create a user and return their id, or None if the username is taken."""
     with closing(connect()) as conn:
-        conn.execute(
+        row = conn.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)"
-            " ON CONFLICT (username) DO UPDATE SET password_hash = excluded.password_hash"
-            " WHERE users.password_hash IS NULL",
+            " ON CONFLICT (username) DO NOTHING RETURNING id",
             (username, password_hash),
-        )
-
-
-def get_password_hash(username: str) -> str | None:
-    """The user's password hash, or None if the user does not exist or has no password."""
-    with closing(connect()) as conn:
-        row = conn.execute("SELECT password_hash FROM users WHERE username = ?", (username,)).fetchone()
+        ).fetchone()
     return row[0] if row else None
 
 
-def get_board(username: str) -> tuple[str, int] | None:
-    """Return the user's board JSON and its version, or None if they have no board yet."""
-    with closing(connect()) as conn:
-        return conn.execute(
-            "SELECT boards.data, boards.version FROM boards JOIN users ON users.id = boards.user_id"
-            " WHERE users.username = ?",
-            (username,),
-        ).fetchone()
-
-
-def create_board(username: str, data: str) -> None:
-    """Create the user's board at version 1 (does nothing if it already exists)."""
+def ensure_password(username: str, password_hash: str) -> None:
+    """Give an existing user this password hash if they have none (users from before hashing)."""
     with closing(connect()) as conn:
         conn.execute(
-            "INSERT INTO boards (user_id, data) SELECT id, ? FROM users WHERE username = ?"
-            " ON CONFLICT (user_id) DO NOTHING",
-            (data, username),
+            "UPDATE users SET password_hash = ? WHERE username = ? AND password_hash IS NULL",
+            (password_hash, username),
         )
 
 
-def update_board(username: str, data: str, version: int) -> int | None:
+def get_user(user_id: int) -> User | None:
+    with closing(connect()) as conn:
+        row = conn.execute("SELECT id, username FROM users WHERE id = ?", (user_id,)).fetchone()
+    return User(*row) if row else None
+
+
+def find_user(username: str) -> tuple[User, str | None] | None:
+    """The user and their password hash, or None if there is no such user."""
+    with closing(connect()) as conn:
+        row = conn.execute(
+            "SELECT id, username, password_hash FROM users WHERE username = ?", (username,)
+        ).fetchone()
+    return (User(row[0], row[1]), row[2]) if row else None
+
+
+def get_password_hash(user_id: int) -> str | None:
+    with closing(connect()) as conn:
+        row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+    return row[0] if row else None
+
+
+def set_password_hash(user_id: int, password_hash: str) -> None:
+    with closing(connect()) as conn:
+        conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+
+
+def delete_user(user_id: int) -> None:
+    """Delete the user and all their boards."""
+    with closing(connect()) as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
+# Boards. Every query is limited to the boards of `user_id`, so a user can never
+# read or change another user's board.
+
+
+def list_boards(user_id: int) -> list[BoardRow]:
+    """The user's boards, oldest first."""
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT id, name, data, version, updated_at FROM boards WHERE user_id = ? ORDER BY id",
+            (user_id,),
+        ).fetchall()
+    return [BoardRow(*row) for row in rows]
+
+
+def create_board(user_id: int, name: str, data: str) -> int:
+    """Create a board at version 1 and return its id."""
+    with closing(connect()) as conn:
+        return conn.execute(
+            "INSERT INTO boards (user_id, name, data) VALUES (?, ?, ?) RETURNING id",
+            (user_id, name, data),
+        ).fetchone()[0]
+
+
+def get_board(user_id: int, board_id: int) -> BoardRow | None:
+    with closing(connect()) as conn:
+        row = conn.execute(
+            "SELECT id, name, data, version, updated_at FROM boards WHERE id = ? AND user_id = ?",
+            (board_id, user_id),
+        ).fetchone()
+    return BoardRow(*row) if row else None
+
+
+def update_board(user_id: int, board_id: int, data: str, version: int) -> int | None:
     """Save the board only if it is still at `version`.
 
     Returns the new version, or None if the board was changed by someone else
@@ -89,8 +174,24 @@ def update_board(username: str, data: str, version: int) -> int | None:
     with closing(connect()) as conn:
         row = conn.execute(
             "UPDATE boards SET data = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP"
-            " WHERE user_id = (SELECT id FROM users WHERE username = ?) AND version = ?"
-            " RETURNING version",
-            (data, username, version),
+            " WHERE id = ? AND user_id = ? AND version = ? RETURNING version",
+            (data, board_id, user_id, version),
         ).fetchone()
     return row[0] if row else None
+
+
+def rename_board(user_id: int, board_id: int, name: str) -> bool:
+    """Rename the board; False if it does not exist."""
+    with closing(connect()) as conn:
+        cursor = conn.execute(
+            "UPDATE boards SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
+            (name, board_id, user_id),
+        )
+    return cursor.rowcount == 1
+
+
+def delete_board(user_id: int, board_id: int) -> bool:
+    """Delete the board; False if it does not exist."""
+    with closing(connect()) as conn:
+        cursor = conn.execute("DELETE FROM boards WHERE id = ? AND user_id = ?", (board_id, user_id))
+    return cursor.rowcount == 1

@@ -1,51 +1,44 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { KanbanBoard } from "@/components/KanbanBoard";
 import { LoginForm } from "@/components/LoginForm";
-import { getBoard, getCurrentUser, login, logout, type VersionedBoard } from "@/lib/api";
+import { Workspace } from "@/components/Workspace";
+import { getCurrentUser, login, logout, register } from "@/lib/api";
 
-type View = "checking" | "signed-out" | "loading-board" | "load-failed" | "ready";
+type View = "checking" | "signed-out" | "failed" | "signed-in";
 
 export default function Home() {
   const [view, setView] = useState<View>("checking");
-  const [board, setBoard] = useState<VersionedBoard | null>(null);
-  // Bumped to run the sign-in check and board load again (after signing in, or on "Try again").
+  const [username, setUsername] = useState("");
+  // Bumped to run the sign-in check again (after signing in, or on "Try again").
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    const load = async () => {
+    const check = async () => {
       try {
-        if (!(await getCurrentUser())) {
-          setView("signed-out");
-          return;
-        }
-        setView("loading-board");
-        setBoard(await getBoard());
-        setView("ready");
+        const name = await getCurrentUser();
+        setUsername(name ?? "");
+        setView(name ? "signed-in" : "signed-out");
       } catch {
-        setView("load-failed");
+        setView("failed");
       }
     };
-    load();
+    check();
   }, [attempt]);
 
-  const reload = () => {
-    setView("loading-board");
-    setAttempt((count) => count + 1);
-  };
+  const recheck = () => setAttempt((count) => count + 1);
 
-  const handleLogin = async (username: string, password: string) => {
-    const error = await login(username, password);
+  // Sign in or register, then load the workspace. Resolves to an error message, if any.
+  const enter = (action: typeof login) => async (name: string, password: string) => {
+    const error = await action(name, password);
     if (!error) {
-      reload();
+      recheck();
     }
     return error;
   };
 
   const handleLogout = async () => {
     await logout();
-    setBoard(null);
     setView("signed-out");
   };
 
@@ -53,17 +46,17 @@ export default function Home() {
     return null;
   }
   if (view === "signed-out") {
-    return <LoginForm onLogin={handleLogin} />;
+    return <LoginForm onLogin={enter(login)} onRegister={enter(register)} />;
   }
-  if (view === "load-failed") {
+  if (view === "failed") {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
         <p role="alert" className="text-sm font-semibold text-[var(--secondary-purple)]">
-          Could not load your board. Check that the server is running.
+          Could not reach the server. Check that it is running.
         </p>
         <button
           type="button"
-          onClick={reload}
+          onClick={recheck}
           className="rounded-full bg-[var(--secondary-purple)] px-5 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110"
         >
           Try again
@@ -71,18 +64,12 @@ export default function Home() {
       </main>
     );
   }
-  if (view === "loading-board" || !board) {
-    return (
-      <p className="p-12 text-center text-sm text-[var(--gray-text)]">
-        Loading board...
-      </p>
-    );
-  }
   return (
-    <KanbanBoard
-      initialBoard={board.board}
-      initialVersion={board.version}
+    <Workspace
+      key={username}
+      username={username}
       onLogout={handleLogout}
+      onAccountDeleted={() => setView("signed-out")}
     />
   );
 }

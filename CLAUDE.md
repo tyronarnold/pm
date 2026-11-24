@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Kanban project management MVP: Next.js static export served by a FastAPI backend, SQLite, AI chat via OpenRouter, all in one Docker container on http://localhost:8000. Sign in as `user` / `password`.
+Kanban project management app (accounts, multiple boards per user, AI chat): Next.js static export served by a FastAPI backend, SQLite, AI chat via OpenRouter, all in one Docker container on http://localhost:8000. Sign in as `user` / `password`, or create an account.
 
 ## Read first
 
@@ -42,15 +42,16 @@ Changing Python dependencies: `docker run --rm -v "$PWD/backend:/work" -w /work 
 
 ## Architecture
 
-- **One board per user, stored as a JSON blob** in `boards.data` with a `version` integer. The board shape (`columns` with `id`, `title`, `cardIds`; `cards` keyed by id) is defined once by the Pydantic `Board` model in `backend/app/board.py`. Columns are fixed: only titles can change, and `PUT /api/board` rejects changed column ids.
+- **Each board is a JSON blob** in `boards.data` with a `name` and a `version` integer; a user has any number of boards, and every board query in `db.py` is scoped by `user_id` (another user's board is a 404). The board shape (`columns` with `id`, `title`, `cardIds`; `cards` keyed by id) is defined once by the Pydantic `Board` model in `backend/app/board.py`. Columns are fixed: only titles can change, and `PUT /api/boards/{id}` rejects changed column ids.
 - **Types flow backend to frontend.** `backend/openapi.json` (committed) is generated from the FastAPI app, and `frontend/src/lib/api-types.ts` (generated, never edit by hand) from that. After changing a Pydantic model or route, run `npm run api:types` and commit both files; `backend/tests/test_openapi.py` fails if `openapi.json` is stale, and the frontend type check fails if the frontend no longer fits.
-- **Optimistic concurrency.** Every save sends the version it is based on; the backend saves only if the version still matches and returns 409 with the current board otherwise. In `KanbanBoard.tsx` every change updates state and queues a whole-board save; saves run one at a time, each using the version returned by the previous one. A 409 replaces local state with the server's board.
-- **AI edits are operations, not board replacements.** `POST /api/chat` sends the system prompt, board JSON, history and message to OpenRouter (`backend/app/ai.py`, Structured Outputs into `{reply, operations}`). `apply_operations` in `board.py` applies `create_card` / `edit_card` / `move_card` / `delete_card` to the *latest saved* board (the user may have saved meanwhile), skipping invalid ones and noting the count in the reply. The backend saves the result, so the frontend replaces its board with the returned one without saving again. Chat history lives only in browser state.
-- **Auth:** Starlette `SessionMiddleware` signed cookie; argon2 hashes in `users.password_hash`; in-memory per-username login lockout. Every protected route depends on `current_user` in `main.py`. The static site is mounted at `/` last so `/api` routes take priority.
+- **Optimistic concurrency.** Every save sends the version it is based on; the backend saves only if the version still matches and returns 409 with the current board otherwise. In `KanbanBoard.tsx` (one per open board, keyed by board id inside `Workspace.tsx`, which keeps the open board in `?board=<id>`) every change updates state and queues a whole-board save; saves run one at a time, each using the version returned by the previous one. A 409 replaces local state with the server's board.
+- **AI edits are operations, not board replacements.** `POST /api/boards/{id}/chat` sends the system prompt, board JSON, history and message to OpenRouter (`backend/app/ai.py`, Structured Outputs into `{reply, operations}`). `apply_operations` in `board.py` applies `create_card` / `edit_card` / `move_card` / `delete_card` to the *latest saved* board (the user may have saved meanwhile), skipping invalid ones and noting the count in the reply. The backend saves the result, so the frontend replaces its board with the returned one without saving again. Chat history lives only in browser state.
+- **Auth:** Starlette `SessionMiddleware` signed cookie holding the user id; `current_user` reloads the user on every request so deleted accounts are signed out. Accounts via `POST /api/register`; argon2 hashes in `users.password_hash`; in-memory per-username login lockout. Every protected route depends on `current_user` (`CurrentUser`) in `main.py`. The static site is mounted at `/` last so `/api` routes take priority.
 
 ## Testing notes
 
 - Backend tests use a temporary `DB_PATH` per test (`conftest.py`); use `with TestClient(app) as client` so startup runs. AI tests replace `ai.client` with a fake; real OpenRouter tests are marked `live`.
-- e2e tests share one `user` board, so Playwright runs with one worker and each test resets the board via `tests/helpers.ts`. The chat e2e test calls the real AI.
+- The kanban and chat e2e tests share the `user` boards, so Playwright runs with one worker and those tests reset them via `resetBoard` in `tests/helpers.ts`; tests that need their own boards call `registerNewUser`. The chat e2e test calls the real AI.
+- Frontend component tests that span several requests use the in-memory fake API in `src/test/fakeServer.ts`.
 - On Windows, run Vitest from PowerShell or cmd (uppercase `C:\` path). From Git Bash the lowercase `c:\` path loads Vitest twice and the jest-dom matchers fail with "Invalid Chai property".
 - Next.js renders a hidden route announcer with `role="alert"`, so find messages in e2e tests by text. Use `getByLabel("Message", { exact: true })` in Playwright.

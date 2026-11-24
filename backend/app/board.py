@@ -91,6 +91,13 @@ DEFAULT_BOARD = Board.model_validate(
 )
 
 
+# New boards get the standard columns and no cards.
+EMPTY_BOARD = Board(
+    columns=[Column(id=column.id, title=column.title, cardIds=[]) for column in DEFAULT_BOARD.columns],
+    cards={},
+)
+
+
 def column_ids(board: Board) -> list[str]:
     return [column.id for column in board.columns]
 

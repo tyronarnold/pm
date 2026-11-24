@@ -1,5 +1,7 @@
 # Building Kanban Studio: A Guided Tour
 
+> **Note:** this tour describes the single-board MVP. The app now has accounts and multiple boards per user (see `docs/PLAN.md`, Part 12): board routes moved to `/api/boards/{id}` and the chat to `/api/boards/{id}/chat`, and the header and board selection live in `Workspace.tsx`. The ideas explained here (static export, sessions, versioned saves, AI operations) are unchanged.
+
 This tutorial walks through how Kanban Studio was built: a project management app with a drag-and-drop Kanban board, sign-in, a database, and an AI assistant that can change the board for you.
 
 It is written for someone with up to a year of frontend experience. You should be comfortable with HTML, CSS, JavaScript and the basics of React (components, props, `useState`). Everything else, including the Python backend, Docker and the AI integration, is explained from the ground up, usually by comparing it to something you already know from the frontend.
