@@ -1,11 +1,18 @@
 import { initialData, type BoardData } from "@/lib/kanban";
 
 // An in-memory stand-in for the backend API, for component tests that go through
-// several requests (sign in, list boards, open, create, rename, delete, save).
-// It follows the backend's rules closely enough for the frontend: sessions, owners,
-// versions and 409 conflicts are not modelled beyond what the tests need.
+// several requests (sign in, list boards, open, create, rename, delete, save, share).
+// It follows the backend's rules closely enough for the frontend: versions and 409s,
+// owners and members (boards without an `owner` belong to "user").
 
-type StoredBoard = { id: number; name: string; version: number; board: BoardData };
+type StoredBoard = {
+  id: number;
+  name: string;
+  version: number;
+  board: BoardData;
+  owner?: string;
+  members?: string[];
+};
 
 export const emptyBoard: BoardData = {
   columns: initialData.columns.map((column) => ({ ...column, cardIds: [] })),
@@ -23,7 +30,18 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
     nextId: 2,
   };
 
-  const summary = ({ id, name }: StoredBoard) => ({ id, name, updated_at: "2026-01-01 00:00:00" });
+  const ownerOf = (board: StoredBoard) => board.owner ?? "user";
+  const membersOf = (board: StoredBoard) => (board.members ??= []);
+  const visible = () =>
+    state.boards.filter((board) => ownerOf(board) === state.user || membersOf(board).includes(state.user!));
+  const forbidden = () => json({ detail: "Only the board's owner can do that." }, 403);
+
+  const summary = (board: StoredBoard) => ({
+    id: board.id,
+    name: board.name,
+    owner: ownerOf(board),
+    updated_at: "2026-01-01 00:00:00",
+  });
 
   const handle = async (url: string, init?: RequestInit): Promise<Response> => {
     const method = init?.method ?? "GET";
@@ -42,6 +60,8 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
       }
       state.passwords.set(body.username, body.password);
       state.user = body.username;
+      // Like the backend, a new account starts with a board of sample cards.
+      state.boards.push({ id: state.nextId++, name: "My first board", version: 1, board: initialData, owner: body.username });
       return json({ username: body.username }, 201);
     }
     if (url === "/api/logout") {
@@ -71,29 +91,53 @@ export const createFakeServer = ({ signedIn = true } = {}) => {
     }
     if (url === "/api/boards") {
       if (method === "POST") {
-        const created = { id: state.nextId++, name: body.name, version: 1, board: emptyBoard };
+        const created = { id: state.nextId++, name: body.name, version: 1, board: emptyBoard, owner: state.user };
         state.boards.push(created);
         return json(created, 201);
       }
-      return json(state.boards.map(summary));
+      return json(visible().map(summary));
     }
 
-    const match = url.match(/^\/api\/boards\/(\d+)(\/chat)?$/);
-    const stored = match && state.boards.find((board) => board.id === Number(match[1]));
+    const match = url.match(/^\/api\/boards\/(\d+)(\/chat|\/members)?(?:\/(.+))?$/);
+    const stored = match && visible().find((board) => board.id === Number(match[1]));
     if (!stored) {
       return json({ detail: "Board not found" }, 404);
     }
-    if (match[2]) {
+    const isOwner = ownerOf(stored) === state.user;
+    if (match[2] === "/chat") {
       return json({ reply: "Noted.", board: null, version: stored.version });
     }
+    if (match[2] === "/members") {
+      const members = membersOf(stored);
+      if (method === "GET") {
+        return json(members);
+      }
+      if (method === "POST") {
+        if (!isOwner) return forbidden();
+        if (!state.passwords.has(body.username)) {
+          return json({ detail: `There is no user called "${body.username}".` }, 422);
+        }
+        if (body.username === state.user || members.includes(body.username)) {
+          return json({ detail: `${body.username} is already a member.` }, 409);
+        }
+        members.push(body.username);
+        return json(members, 201);
+      }
+      const username = decodeURIComponent(match[3]);
+      if (!isOwner && username !== state.user) return forbidden();
+      stored.members = members.filter((member) => member !== username);
+      return new Response(null, { status: 204 });
+    }
     if (method === "GET") {
-      return json(stored);
+      return json({ ...stored, owner: ownerOf(stored) });
     }
     if (method === "PATCH") {
+      if (!isOwner) return forbidden();
       stored.name = body.name;
       return json(summary(stored));
     }
     if (method === "DELETE") {
+      if (!isOwner) return forbidden();
       state.boards = state.boards.filter((board) => board !== stored);
       return new Response(null, { status: 204 });
     }

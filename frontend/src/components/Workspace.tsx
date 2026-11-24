@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AccountPanel } from "@/components/AccountPanel";
 import { BoardBar } from "@/components/BoardBar";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { SharePanel } from "@/components/SharePanel";
 import {
   createBoard,
   deleteBoard,
@@ -36,6 +37,7 @@ export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspacePro
   const [status, setStatus] = useState<Status>("loading");
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
+  const [showSharing, setShowSharing] = useState(false);
   // Bumped by "Try again" to load everything again.
   const [attempt, setAttempt] = useState(0);
 
@@ -134,6 +136,8 @@ export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspacePro
             <BoardBar
               boards={boards}
               current={current}
+              username={username}
+              onShare={() => setShowSharing((shown) => !shown)}
               onSelect={handleSelect}
               onCreate={handleCreate}
               onRename={handleRename}
@@ -149,6 +153,22 @@ export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspacePro
 
         {showAccount && (
           <AccountPanel onClose={() => setShowAccount(false)} onDeleted={onAccountDeleted} />
+        )}
+
+        {showSharing && current && (
+          // Keyed by board, so switching boards loads that board's members. Keys must differ
+          // from the KanbanBoard's: siblings with the same key confuse React.
+          <SharePanel
+            key={`sharing-${current.id}`}
+            boardId={current.id}
+            owner={current.owner}
+            username={username}
+            onLeave={() => {
+              setShowSharing(false);
+              act(() => open());
+            }}
+            onClose={() => setShowSharing(false)}
+          />
         )}
 
         {status === "loading" && (
@@ -179,7 +199,7 @@ export const Workspace = ({ username, onLogout, onAccountDeleted }: WorkspacePro
         {status === "ready" && current && (
           // Keyed by board, so switching boards starts with fresh board and chat state.
           <KanbanBoard
-            key={current.id}
+            key={`board-${current.id}`}
             boardId={current.id}
             initialBoard={current.board}
             initialVersion={current.version}

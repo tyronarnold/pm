@@ -15,6 +15,7 @@ type NewAccount = Schemas["NewAccount"];
 type PasswordChange = Schemas["PasswordChange"];
 type PasswordConfirmation = Schemas["PasswordConfirmation"];
 type BoardName = Schemas["BoardName"];
+type NewMember = Schemas["NewMember"];
 
 const send = (url: string, method: string, body?: unknown) =>
   fetch(url, {
@@ -94,6 +95,25 @@ export const renameBoard = async (id: number, name: string): Promise<BoardSummar
 
 export const deleteBoard = async (id: number): Promise<void> => {
   ok(await fetch(`/api/boards/${id}`, { method: "DELETE" }), "Deleting the board");
+};
+
+// Members of a shared board (usernames, not including the owner).
+
+export const listMembers = async (boardId: number): Promise<string[]> =>
+  ok(await fetch(`/api/boards/${boardId}/members`), "Loading the members").json();
+
+// Returns null on success, or a message for the user (no such user, already a member).
+export const addMember = async (boardId: number, username: string): Promise<string | null> => {
+  const response = await send(`/api/boards/${boardId}/members`, "POST", { username } satisfies NewMember);
+  return response.ok ? null : errorMessage(response, "Could not share the board.");
+};
+
+// The owner removes a member, or a member removes themselves (leaves the board). Throws on failure.
+export const removeMember = async (boardId: number, username: string): Promise<void> => {
+  ok(
+    await fetch(`/api/boards/${boardId}/members/${encodeURIComponent(username)}`, { method: "DELETE" }),
+    "Removing the member"
+  );
 };
 
 const CHAT_UNAVAILABLE = "The assistant could not be reached. Please try again.";

@@ -244,4 +244,103 @@ describe("Workspace", () => {
       expect(screen.queryByRole("region", { name: "Account settings" })).not.toBeInTheDocument();
     });
   });
+
+  describe("sharing", () => {
+    const openSharing = async (button: "Share" | "Members") => {
+      await userEvent.click(await screen.findByRole("button", { name: button }));
+      return screen.getByRole("region", { name: "Sharing" });
+    };
+
+    const people = (panel: HTMLElement) =>
+      within(within(panel).getByRole("list", { name: "People with access" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent);
+
+    it("lets the owner share the board and remove members", async () => {
+      const { state } = createFakeServer();
+      state.passwords.set("alice", "alice-password");
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      expect(await within(panel).findByText("Not shared with anyone yet.")).toBeInTheDocument();
+
+      await userEvent.type(within(panel).getByLabelText("Share with (username)"), "alice");
+      await userEvent.click(within(panel).getByRole("button", { name: "Share" }));
+      await waitFor(() => expect(people(panel)).toEqual(["user (owner)", "aliceRemove"]));
+      expect(within(panel).getByLabelText("Share with (username)")).toHaveValue("");
+      expect(state.boards[0].members).toEqual(["alice"]);
+
+      await userEvent.click(within(panel).getByRole("button", { name: "Remove alice" }));
+      await waitFor(() => expect(state.boards[0].members).toEqual([]));
+      expect(await within(panel).findByText("Not shared with anyone yet.")).toBeInTheDocument();
+    });
+
+    it("shows why a board could not be shared", async () => {
+      createFakeServer();
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      await userEvent.type(within(panel).getByLabelText("Share with (username)"), "nobody");
+      await userEvent.click(within(panel).getByRole("button", { name: "Share" }));
+      expect(await within(panel).findByRole("alert")).toHaveTextContent('There is no user called "nobody".');
+    });
+
+    it("closes", async () => {
+      createFakeServer();
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      await userEvent.click(within(panel).getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("region", { name: "Sharing" })).not.toBeInTheDocument();
+    });
+
+    describe("as a member", () => {
+      const sharedWithUser = () => {
+        const server = createFakeServer();
+        server.state.passwords.set("alice", "alice-password");
+        server.state.boards.push({
+          id: 7, name: "Alice's plans", version: 1, board: emptyBoard, owner: "alice", members: ["user"],
+        });
+        window.history.replaceState(null, "", "/?board=7");
+        return server;
+      };
+
+      it("labels the board with its owner and hides the owner's actions", async () => {
+        sharedWithUser();
+        renderWorkspace();
+        await waitFor(() => expect(selectedName()).toBe("Alice's plans (shared by alice)"));
+        expect(within(boardSelect()).getAllByRole("option").map((o) => o.textContent)).toEqual([
+          "My first board",
+          "Alice's plans (shared by alice)",
+        ]);
+        expect(screen.queryByRole("button", { name: "Rename board" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Delete board" })).not.toBeInTheDocument();
+
+        const panel = await openSharing("Members");
+        await waitFor(() => expect(people(panel)).toEqual(["alice (owner)", "user"]));
+        expect(within(panel).queryByLabelText("Share with (username)")).not.toBeInTheDocument();
+        expect(within(panel).queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
+      });
+
+      it("leaves the board after confirming and opens another one", async () => {
+        const { state } = sharedWithUser();
+        vi.spyOn(window, "confirm").mockReturnValue(true);
+        renderWorkspace();
+        const panel = await openSharing("Members");
+        await userEvent.click(within(panel).getByRole("button", { name: "Leave board" }));
+
+        await waitFor(() => expect(selectedName()).toBe("My first board"));
+        expect(state.boards.find((board) => board.id === 7)!.members).toEqual([]);
+        expect(screen.queryByRole("region", { name: "Sharing" })).not.toBeInTheDocument();
+        expect(within(boardSelect()).getAllByRole("option")).toHaveLength(1);
+      });
+
+      it("stays on the board when leaving is not confirmed", async () => {
+        const { state } = sharedWithUser();
+        vi.spyOn(window, "confirm").mockReturnValue(false);
+        renderWorkspace();
+        const panel = await openSharing("Members");
+        await userEvent.click(within(panel).getByRole("button", { name: "Leave board" }));
+        expect(state.boards.find((board) => board.id === 7)!.members).toEqual(["user"]);
+        expect(selectedName()).toBe("Alice's plans (shared by alice)");
+      });
+    });
+  });
 });

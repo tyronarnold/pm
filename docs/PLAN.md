@@ -280,7 +280,7 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 12: Accounts and multiple boards
 - [x] Part 13: Richer cards (priority, due date, labels) and board search / filter
 - [x] Part 14: Editable columns (add, rename, remove, reorder) per board
-- [ ] Part 15: Board sharing with other users (members can view and edit)
+- [x] Part 15: Board sharing with other users (members can view and edit)
 - [ ] Part 16: Admin user management (admin role, list users, reset password, delete user)
 - [ ] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [ ] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
@@ -350,3 +350,21 @@ Checklist:
 - [x] Docs
 
 Results: 125 backend tests (including live), 85 Vitest, 30 Playwright, all passing.
+
+### Part 15: Board sharing
+
+Decisions:
+- `board_members (board_id, user_id)` lists who a board is shared with; the owner stays `boards.user_id`. One role for members: they can open, edit and save the board and use the AI chat on it (anything a board's contents allow). Only the owner can rename, delete or share it; a member can leave
+- Access is one SQL condition (`ACCESS` in `db.py`) used by list, get and save, so every read and write path checks it the same way. Owner-only routes call `find_owned_board`: 404 for strangers (a board's existence is not revealed), 403 for members
+- Sharing is by username (trimmed and lowercased). An unknown username is a 422 with a message; this does reveal whether a username exists, which sharing by name needs
+- Editing together uses the existing versioned saves: a member's save and the owner's save conflict like two tabs (409, the latest board is loaded). No live updates: others' changes show on the next save or reload (a possible later improvement)
+- Board summaries and details carry `owner` (a username); the switcher labels shared boards "Name (shared by owner)", and the board bar shows "Share" to the owner and "Members" to members
+- Bug found by the tests: `SharePanel` and `KanbanBoard` were siblings keyed by the same board id. React matches keys across all of an element's children, so closing the panel removed the wrong node and the panel stayed on screen (React's "two children with the same key" error, captured with a console.error spy). Fixed with distinct keys (`sharing-<id>`, `board-<id>`). To catch this class of problem, `src/test/setup.ts` now fails any Vitest test that logs a console error (checked with a throwaway test that logs one)
+
+Checklist:
+- [x] Backend: members table, access checks, owner-only actions, member routes
+- [x] Frontend: shared board labels, share panel (share, remove, leave), owner-only buttons
+- [x] Tests: pytest `test_sharing.py`, Vitest sharing tests in `Workspace.test.tsx` (fake API with owners and members), Playwright `sharing.spec.ts` with two browser contexts
+- [x] Docs
+
+Results: 144 backend tests (including live), 91 Vitest, 34 Playwright, all passing.

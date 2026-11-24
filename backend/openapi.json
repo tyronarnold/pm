@@ -210,6 +210,7 @@
     "/api/boards": {
       "get": {
         "summary": "List Boards",
+        "description": "The boards the user owns or that are shared with them, oldest first.",
         "operationId": "list_boards_api_boards_get",
         "responses": {
           "200": {
@@ -293,7 +294,7 @@
             }
           },
           "404": {
-            "description": "No such board (or not yours)"
+            "description": "No such board (or not shared with you)"
           },
           "422": {
             "description": "Validation Error",
@@ -343,7 +344,10 @@
             }
           },
           "404": {
-            "description": "No such board (or not yours)"
+            "description": "No such board (or not shared with you)"
+          },
+          "403": {
+            "description": "Only the board's owner can do this"
           },
           "422": {
             "description": "Validation Error",
@@ -376,7 +380,10 @@
             "description": "Successful Response"
           },
           "404": {
-            "description": "No such board (or not yours)"
+            "description": "No such board (or not shared with you)"
+          },
+          "403": {
+            "description": "Only the board's owner can do this"
           },
           "422": {
             "description": "Validation Error",
@@ -427,10 +434,159 @@
             }
           },
           "404": {
-            "description": "No such board (or not yours)"
+            "description": "No such board (or not shared with you)"
           },
           "409": {
             "description": "Board changed since `version`; body has the current board"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/members": {
+      "get": {
+        "summary": "List Members",
+        "description": "Usernames the board is shared with (not including the owner).",
+        "operationId": "list_members_api_boards__board_id__members_get",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Board Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response List Members Api Boards  Board Id  Members Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such board (or not shared with you)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Add Member",
+        "description": "Share the board with another user; returns the members.",
+        "operationId": "add_member_api_boards__board_id__members_post",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Board Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewMember"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Add Member Api Boards  Board Id  Members Post"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such board (or not shared with you)"
+          },
+          "403": {
+            "description": "Only the board's owner can do this"
+          },
+          "409": {
+            "description": "Already a member, or the owner"
+          },
+          "422": {
+            "description": "No such user"
+          }
+        }
+      }
+    },
+    "/api/boards/{board_id}/members/{username}": {
+      "delete": {
+        "summary": "Remove Member",
+        "description": "The owner removes a member, or a member leaves the board.",
+        "operationId": "remove_member_api_boards__board_id__members__username__delete",
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Board Id"
+            }
+          },
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Username"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such board (or not shared with you)"
+          },
+          "403": {
+            "description": "Only the board's owner can do this"
           },
           "422": {
             "description": "Validation Error",
@@ -482,7 +638,7 @@
             }
           },
           "404": {
-            "description": "No such board (or not yours)"
+            "description": "No such board (or not shared with you)"
           },
           "502": {
             "description": "The AI call failed; `detail` is a message for the user"
@@ -551,6 +707,10 @@
             "type": "string",
             "title": "Name"
           },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
+          },
           "version": {
             "type": "integer",
             "title": "Version"
@@ -563,6 +723,7 @@
         "required": [
           "id",
           "name",
+          "owner",
           "version",
           "board"
         ],
@@ -596,13 +757,18 @@
           "updated_at": {
             "type": "string",
             "title": "Updated At"
+          },
+          "owner": {
+            "type": "string",
+            "title": "Owner"
           }
         },
         "type": "object",
         "required": [
           "id",
           "name",
-          "updated_at"
+          "updated_at",
+          "owner"
         ],
         "title": "BoardSummary"
       },
@@ -823,6 +989,19 @@
           "password"
         ],
         "title": "NewAccount"
+      },
+      "NewMember": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "NewMember"
       },
       "PasswordChange": {
         "properties": {

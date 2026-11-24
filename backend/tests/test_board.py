@@ -97,7 +97,9 @@ def test_list_boards(signed_in, board_id):
 def test_get_board_returns_the_sample_board_at_version_1(signed_in, board_id):
     response = signed_in.get(f"/api/boards/{board_id}")
     assert response.status_code == 200
-    assert response.json() == {"id": board_id, "name": "My first board", "version": 1, "board": default_board()}
+    assert response.json() == {
+        "id": board_id, "name": "My first board", "owner": "user", "version": 1, "board": default_board()
+    }
 
 
 def test_create_board_has_the_standard_columns_and_no_cards(signed_in, board_id):

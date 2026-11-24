@@ -29,10 +29,19 @@ CREATE TABLE IF NOT EXISTS boards (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS boards_user_id ON boards (user_id);
+
+CREATE TABLE IF NOT EXISTS board_members (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (board_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS board_members_user_id ON board_members (user_id);
 ```
 
 - A user has any number of boards. Deleting a user deletes their boards (`ON DELETE CASCADE`, with `PRAGMA foreign_keys = ON` set on every connection).
-- Every board query in `db.py` is limited by `user_id` as well as the board id, so one user can never read or change another user's board; the API answers 404 for both "no such board" and "not yours".
+- `boards.user_id` is the owner. `board_members` lists the other users a board is shared with (the owner is not listed); members are listed in the order they were added (`rowid`). Deleting a board or either user removes the membership.
+- Board reads and saves in `db.py` are limited to the owner and members (the `ACCESS` condition); renames and deletes to the owner. The API answers 404 for "no such board" and "not shared with you" alike, and 403 when a member tries an owner-only action.
 - `users.username` is 3-32 lowercase letters, digits, `.`, `_` or `-` (checked by the API, not the database).
 - `users.password_hash` holds an argon2id hash (argon2-cffi), never the password. On startup the demo `user` account is created with the hash of `password` if missing, or given that hash if it has none (databases from before hashing); an existing hash is never replaced. Sign-in checks the hash.
 - `users.session_version` is copied into the session cookie at sign-in and checked on every request. Changing the password increments it, so every other session is signed out (the session that made the change is given the new value and stays signed in).
@@ -90,6 +99,7 @@ There is no migration framework; `init_db` upgrades databases made by earlier ve
 - `users.password_hash` missing: added with `ALTER TABLE` (the `user` account then gets its hash at startup).
 - `users.session_version` missing: added with `ALTER TABLE` (default 0). Sessions signed before it existed have no version in their cookie, so their users sign in once more.
 - `boards.version` missing: added with `ALTER TABLE` (boards start at version 1).
+- `board_members` missing: created like any new table (`CREATE TABLE IF NOT EXISTS`).
 - `boards.name` missing (the one-board-per-user design, where `boards.user_id` was `UNIQUE`): SQLite cannot drop a constraint, so the table is rebuilt in one transaction (rename, create the new table, copy every row, drop the old one). Board ids and versions are kept, and each board is named "My board".
 
 For larger changes, deleting the volume (`docker volume rm pm-data`) starts fresh, at the cost of all saved boards.

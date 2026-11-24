@@ -27,6 +27,17 @@ CREATE TABLE IF NOT EXISTS boards (
 CREATE INDEX IF NOT EXISTS boards_user_id ON boards (user_id);
 """
 
+# Users a board is shared with. The owner (boards.user_id) is not listed here.
+MEMBERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS board_members (
+    board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    added_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (board_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS board_members_user_id ON board_members (user_id);
+"""
+
 # Databases from before multiple boards had one board per user (`user_id UNIQUE`) and no
 # name. SQLite cannot drop a constraint, so the table is rebuilt, keeping every board.
 MULTIPLE_BOARDS_MIGRATION = f"""
@@ -54,6 +65,7 @@ class BoardRow(NamedTuple):
     data: str
     version: int
     updated_at: str
+    owner: str  # the owner's username
 
 
 def connect() -> sqlite3.Connection:
@@ -83,6 +95,7 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE boards ADD COLUMN version INTEGER NOT NULL DEFAULT 1")
             conn.executescript(MULTIPLE_BOARDS_MIGRATION)
         conn.executescript(BOARDS_SCHEMA)
+        conn.executescript(MEMBERS_SCHEMA)
 
 
 # Users
@@ -148,17 +161,22 @@ def delete_user(user_id: int) -> None:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
 
-# Boards. Every query is limited to the boards of `user_id`, so a user can never
-# read or change another user's board.
+# Boards. Reads and saves are limited to boards the user owns or is a member of
+# (`ACCESS`); renaming and deleting to boards the user owns. So a user can never
+# read or change a board that was not shared with them.
+
+ACCESS = "(boards.user_id = :user OR boards.id IN (SELECT board_id FROM board_members WHERE user_id = :user))"
+
+BOARD_COLUMNS = (
+    "SELECT boards.id, boards.name, boards.data, boards.version, boards.updated_at, owners.username"
+    " FROM boards JOIN users AS owners ON owners.id = boards.user_id"
+)
 
 
 def list_boards(user_id: int) -> list[BoardRow]:
-    """The user's boards, oldest first."""
+    """The boards the user owns or is a member of, oldest first."""
     with closing(connect()) as conn:
-        rows = conn.execute(
-            "SELECT id, name, data, version, updated_at FROM boards WHERE user_id = ? ORDER BY id",
-            (user_id,),
-        ).fetchall()
+        rows = conn.execute(f"{BOARD_COLUMNS} WHERE {ACCESS} ORDER BY boards.id", {"user": user_id}).fetchall()
     return [BoardRow(*row) for row in rows]
 
 
@@ -172,41 +190,74 @@ def create_board(user_id: int, name: str, data: str) -> int:
 
 
 def get_board(user_id: int, board_id: int) -> BoardRow | None:
+    """The board, if the user owns it or is a member."""
     with closing(connect()) as conn:
         row = conn.execute(
-            "SELECT id, name, data, version, updated_at FROM boards WHERE id = ? AND user_id = ?",
-            (board_id, user_id),
+            f"{BOARD_COLUMNS} WHERE boards.id = :board AND {ACCESS}", {"board": board_id, "user": user_id}
         ).fetchone()
     return BoardRow(*row) if row else None
 
 
 def update_board(user_id: int, board_id: int, data: str, version: int) -> int | None:
-    """Save the board only if it is still at `version`.
+    """Save the board only if it is still at `version` (owner or member).
 
     Returns the new version, or None if the board was changed by someone else
-    in the meantime (or does not exist).
+    in the meantime (or does not exist, or is not shared with the user).
     """
     with closing(connect()) as conn:
         row = conn.execute(
-            "UPDATE boards SET data = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP"
-            " WHERE id = ? AND user_id = ? AND version = ? RETURNING version",
-            (data, board_id, user_id, version),
+            "UPDATE boards SET data = :data, version = version + 1, updated_at = CURRENT_TIMESTAMP"
+            f" WHERE id = :board AND version = :version AND {ACCESS} RETURNING version",
+            {"data": data, "board": board_id, "version": version, "user": user_id},
         ).fetchone()
     return row[0] if row else None
 
 
-def rename_board(user_id: int, board_id: int, name: str) -> bool:
-    """Rename the board; False if it does not exist."""
+def rename_board(owner_id: int, board_id: int, name: str) -> bool:
+    """Rename the board; False if it does not exist or is not the owner's."""
     with closing(connect()) as conn:
         cursor = conn.execute(
             "UPDATE boards SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?",
-            (name, board_id, user_id),
+            (name, board_id, owner_id),
         )
     return cursor.rowcount == 1
 
 
-def delete_board(user_id: int, board_id: int) -> bool:
-    """Delete the board; False if it does not exist."""
+def delete_board(owner_id: int, board_id: int) -> bool:
+    """Delete the board (and its memberships); False if it does not exist or is not the owner's."""
     with closing(connect()) as conn:
-        cursor = conn.execute("DELETE FROM boards WHERE id = ? AND user_id = ?", (board_id, user_id))
+        cursor = conn.execute("DELETE FROM boards WHERE id = ? AND user_id = ?", (board_id, owner_id))
+    return cursor.rowcount == 1
+
+
+# Members of a shared board.
+
+
+def list_members(board_id: int) -> list[str]:
+    """Usernames of the board's members (not the owner), in the order they were added."""
+    with closing(connect()) as conn:
+        rows = conn.execute(
+            "SELECT users.username FROM board_members JOIN users ON users.id = board_members.user_id"
+            " WHERE board_members.board_id = ? ORDER BY board_members.rowid",
+            (board_id,),
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def add_member(board_id: int, user_id: int) -> bool:
+    """Share the board with the user; False if they are already a member."""
+    with closing(connect()) as conn:
+        cursor = conn.execute(
+            "INSERT INTO board_members (board_id, user_id) VALUES (?, ?) ON CONFLICT DO NOTHING",
+            (board_id, user_id),
+        )
+    return cursor.rowcount == 1
+
+
+def remove_member(board_id: int, user_id: int) -> bool:
+    """Stop sharing the board with the user; False if they were not a member."""
+    with closing(connect()) as conn:
+        cursor = conn.execute(
+            "DELETE FROM board_members WHERE board_id = ? AND user_id = ?", (board_id, user_id)
+        )
     return cursor.rowcount == 1

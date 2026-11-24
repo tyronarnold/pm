@@ -123,7 +123,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Boards */
+        /**
+         * List Boards
+         * @description The boards the user owns or that are shared with them, oldest first.
+         */
         get: operations["list_boards_api_boards_get"];
         put?: never;
         /**
@@ -158,6 +161,50 @@ export interface paths {
         head?: never;
         /** Rename Board */
         patch: operations["rename_board_api_boards__board_id__patch"];
+        trace?: never;
+    };
+    "/api/boards/{board_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description Usernames the board is shared with (not including the owner).
+         */
+        get: operations["list_members_api_boards__board_id__members_get"];
+        put?: never;
+        /**
+         * Add Member
+         * @description Share the board with another user; returns the members.
+         */
+        post: operations["add_member_api_boards__board_id__members_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/boards/{board_id}/members/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Member
+         * @description The owner removes a member, or a member leaves the board.
+         */
+        delete: operations["remove_member_api_boards__board_id__members__username__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/boards/{board_id}/chat": {
@@ -201,6 +248,8 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+            /** Owner */
+            owner: string;
             /** Version */
             version: number;
             board: components["schemas"]["Board"];
@@ -218,6 +267,8 @@ export interface components {
             name: string;
             /** Updated At */
             updated_at: string;
+            /** Owner */
+            owner: string;
         };
         /**
          * Card
@@ -295,6 +346,11 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** NewMember */
+        NewMember: {
+            /** Username */
+            username: string;
         };
         /** PasswordChange */
         PasswordChange: {
@@ -635,7 +691,7 @@ export interface operations {
                     "application/json": components["schemas"]["BoardDetail"];
                 };
             };
-            /** @description No such board (or not yours) */
+            /** @description No such board (or not shared with you) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -677,7 +733,7 @@ export interface operations {
                     "application/json": components["schemas"]["VersionedBoard"];
                 };
             };
-            /** @description No such board (or not yours) */
+            /** @description No such board (or not shared with you) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -720,7 +776,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description No such board (or not yours) */
+            /** @description Only the board's owner can do this */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such board (or not shared with you) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -762,7 +825,150 @@ export interface operations {
                     "application/json": components["schemas"]["BoardSummary"];
                 };
             };
-            /** @description No such board (or not yours) */
+            /** @description Only the board's owner can do this */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such board (or not shared with you) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_members_api_boards__board_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description No such board (or not shared with you) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_member_api_boards__board_id__members_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMember"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Only the board's owner can do this */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such board (or not shared with you) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Already a member, or the owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such user */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_member_api_boards__board_id__members__username__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                board_id: number;
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Only the board's owner can do this */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such board (or not shared with you) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -804,7 +1010,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatResponse"];
                 };
             };
-            /** @description No such board (or not yours) */
+            /** @description No such board (or not shared with you) */
             404: {
                 headers: {
                     [name: string]: unknown;

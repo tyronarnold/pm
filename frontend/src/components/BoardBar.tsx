@@ -4,6 +4,8 @@ import type { BoardDetail, BoardSummary } from "@/lib/api";
 type BoardBarProps = {
   boards: BoardSummary[];
   current: BoardDetail | null;
+  username: string; // the signed-in user; only a board's owner can rename or delete it
+  onShare: () => void;
   onSelect: (id: number) => void;
   onCreate: (name: string) => Promise<void>;
   onRename: (name: string) => Promise<void>;
@@ -13,8 +15,17 @@ type BoardBarProps = {
 const buttonClass =
   "rounded-full border border-[var(--stroke)] bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--navy-dark)] transition hover:border-[var(--primary-blue)] hover:text-[var(--primary-blue)]";
 
-// Board switcher plus new / rename / delete. New and rename swap the bar for a name form.
-export const BoardBar = ({ boards, current, onSelect, onCreate, onRename, onDelete }: BoardBarProps) => {
+// Board switcher plus new / rename / delete / share. New and rename swap the bar for a name form.
+export const BoardBar = ({
+  boards,
+  current,
+  username,
+  onShare,
+  onSelect,
+  onCreate,
+  onRename,
+  onDelete,
+}: BoardBarProps) => {
   const [mode, setMode] = useState<"create" | "rename" | null>(null);
   const [name, setName] = useState("");
 
@@ -70,7 +81,7 @@ export const BoardBar = ({ boards, current, onSelect, onCreate, onRename, onDele
           >
             {boards.map((board) => (
               <option key={board.id} value={board.id}>
-                {board.name}
+                {board.owner === username ? board.name : `${board.name} (shared by ${board.owner})`}
               </option>
             ))}
           </select>
@@ -79,7 +90,7 @@ export const BoardBar = ({ boards, current, onSelect, onCreate, onRename, onDele
       <button type="button" onClick={() => start("create")} className={buttonClass}>
         New board
       </button>
-      {current && (
+      {current && current.owner === username && (
         <>
           <button type="button" onClick={() => start("rename")} className={buttonClass}>
             Rename board
@@ -88,6 +99,11 @@ export const BoardBar = ({ boards, current, onSelect, onCreate, onRename, onDele
             Delete board
           </button>
         </>
+      )}
+      {current && (
+        <button type="button" onClick={onShare} className={buttonClass}>
+          {current.owner === username ? "Share" : "Members"}
+        </button>
       )}
     </div>
   );
