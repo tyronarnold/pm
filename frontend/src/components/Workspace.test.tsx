@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Workspace } from "@/components/Workspace";
 import { createFakeServer, emptyBoard, json } from "@/test/fakeServer";
@@ -287,6 +287,31 @@ describe("Workspace", () => {
 
       await userEvent.click(screen.getByRole("button", { name: "Edit Align roadmap themes" }));
       expect(within(screen.getByLabelText("Assignee")).getByRole("option", { name: "alice" })).toBeInTheDocument();
+    });
+
+    it("keeps the newly opened board when a share finishes after switching boards", async () => {
+      const { state, fetchMock, handle } = createFakeServer();
+      state.passwords.set("alice", "alice-password");
+      state.boards.push({ id: 5, name: "Second", version: 1, board: emptyBoard });
+      let finishShare: () => void = () => {};
+      fetchMock.mockImplementation(async (url, init) => {
+        if (url === "/api/boards/1/members" && init?.method === "POST") {
+          await new Promise<void>((resolve) => (finishShare = resolve));
+        }
+        return handle(url, init);
+      });
+      renderWorkspace();
+      const panel = await openSharing("Share");
+      await userEvent.type(within(panel).getByLabelText("Share with (username)"), "alice");
+      await userEvent.click(within(panel).getByRole("button", { name: "Share" }));
+
+      await userEvent.selectOptions(boardSelect(), "Second");
+      await waitFor(() => expect(screen.queryByText("Align roadmap themes")).not.toBeInTheDocument());
+      await act(async () => finishShare());
+
+      await waitFor(() => expect(state.boards[0].members).toEqual(["alice"]));
+      expect(selectedName()).toBe("Second");
+      expect(screen.queryByText("Align roadmap themes")).not.toBeInTheDocument();
     });
 
     it("shows why a board could not be shared", async () => {

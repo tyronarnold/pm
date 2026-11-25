@@ -61,6 +61,15 @@ describe("KanbanBoard", () => {
     expect(lastSaved().columns[0].title).toBe("New Name");
   });
 
+  it("does not save when a column title is focused and left unchanged", async () => {
+    renderBoard();
+    await userEvent.click(within(getFirstColumn()).getByLabelText("Column title"));
+    await userEvent.tab();
+    await userEvent.click(within(getFirstColumn()).getByLabelText("Column title"));
+    await userEvent.keyboard("{Enter}");
+    expect(savedBoards()).toHaveLength(0);
+  });
+
   it("saves a column rename on Enter", async () => {
     renderBoard();
     const input = within(getFirstColumn()).getByLabelText("Column title");

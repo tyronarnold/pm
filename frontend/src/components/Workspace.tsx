@@ -207,7 +207,10 @@ export const Workspace = ({ username, isAdmin, onLogout, onAccountDeleted }: Wor
               setShowSharing(false);
               act(() => open());
             }}
-            onMembersChange={(members) => setCurrent({ ...current, members })}
+            // Only for the board this panel belongs to: a share can finish after switching boards.
+            onMembersChange={(members) =>
+              setCurrent((open) => (open?.id === current.id ? { ...open, members } : open))
+            }
             onClose={() => setShowSharing(false)}
           />
         )}

@@ -469,3 +469,11 @@ Decisions:
 - No router tags or prefixes were added, since those would change the OpenAPI schema and the generated TypeScript types for no benefit
 
 Results: 190 backend tests (99.88% coverage), unchanged frontend (129 Vitest, 43 Playwright).
+
+### Review pass after Part 21
+
+Two bugs found by tracing the frontend's async flows, each reproduced with a failing test first:
+- A share that finished after switching boards brought the previous board back: the sharing panel's `onMembersChange` set the open board from a value captured when the panel rendered. It now updates the open board only if it is still the panel's board (functional `setCurrent`). Test: share, switch boards while the request is pending, then let it finish
+- Clicking into a column title and leaving it unchanged saved the board anyway, bumping the version (which makes other people's live updates refetch and can give another open tab a needless conflict). Leaving a title now saves only if it was typed in. Test: focus and leave a title (by Tab and by Enter) sends no save
+
+Results: 190 backend tests, 131 Vitest (98.3% lines), 43 Playwright, all passing.

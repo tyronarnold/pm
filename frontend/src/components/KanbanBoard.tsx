@@ -246,7 +246,8 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, use
                     isLast={index === board.columns.length - 1}
                     today={today}
                     onRename={handleRenameColumn}
-                    onRenameDone={() => persist(board)}
+                    // Leaving a title without typing in it changes nothing, so it is not saved.
+                    onRenameDone={() => typingTitle.current && persist(board)}
                     onAddCard={handleAddCard}
                     onDeleteCard={handleDeleteCard}
                     onEditCard={handleEditCard}
