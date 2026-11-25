@@ -4,6 +4,13 @@ Project management app with accounts, multiple Kanban boards per user and an AI 
 
 ![Kanban Studio board with the AI Assistant sidebar](docs/screenshot.png)
 
+- Accounts: sign up, change password, delete account; admins manage users
+- Any number of boards per user, shared with other users by username
+- Editable columns; cards with priority, due date, labels and an assignee
+- Search and filters, an activity log per board, and an overview of all boards
+- Live updates: changes by others appear within a few seconds
+- An AI assistant that creates, edits, moves, assigns and deletes cards and columns
+
 Requires Docker and a `.env` file in the repo root containing `OPENROUTER_API_KEY`. Optional settings in `.env`:
 
 - `SESSION_SECRET`: a long random string that signs the sign-in cookie. Without it a random one is used and every restart signs you out.

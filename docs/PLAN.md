@@ -485,3 +485,9 @@ Results: 190 backend tests, 131 Vitest (98.3% lines), 43 Playwright, all passing
 - Checked on the real app after a backup: both accounts and both boards kept their ids and data, and `PRAGMA foreign_key_check` is clean
 
 Results: 192 backend tests (including live, 99.88% coverage), frontend unchanged (131 Vitest, 43 Playwright).
+
+### Wrap-up
+
+- README: a short feature list; `docs/screenshot.png` retaken from a throwaway container (demo data only) showing a shared board with assignees, the assignee filter and the current board bar
+- Known, by design: at about 1700px wide with the chat open, the "+ Add column" tile is just past the right edge; the column row scrolls sideways to it
+- Final verification on the finished code: lint and build clean; 192 backend tests including live AI (99.88% coverage); 131 Vitest (98.3% lines, 95.0% branches); 43 Playwright
