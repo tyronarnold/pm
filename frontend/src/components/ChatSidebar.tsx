@@ -134,9 +134,13 @@ export const ChatSidebar = ({ boardId, onBoardUpdate }: ChatSidebarProps) => {
         <button
           type="submit"
           disabled={isSending || !input.trim()}
-          className="rounded-full bg-[var(--secondary-purple)] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:brightness-110 disabled:opacity-50"
+          aria-label="Send"
+          title="Send"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--secondary-purple)] text-white transition hover:brightness-110 disabled:opacity-50"
         >
-          Send
+          <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+            <path d="M3.4 2.6a.75.75 0 0 0-1 .9l1.9 5.8a.75.75 0 0 0 .7.5h5.5a.75.75 0 0 1 0 1.5H5a.75.75 0 0 0-.7.5l-1.9 5.8a.75.75 0 0 0 1 .9l14-7.1a.75.75 0 0 0 0-1.3l-14-7.5z" />
+          </svg>
         </button>
       </form>
     </aside>
