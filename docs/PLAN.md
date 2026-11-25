@@ -21,7 +21,10 @@ Dockerfile               multi-stage: build frontend (Node), run backend (Python
 .dockerignore
 backend/
   pyproject.toml, uv.lock
-  app/main.py            FastAPI app, routes, static file serving
+  app/main.py            FastAPI app, middleware, startup, static file serving
+  app/access.py          signed-in user, admins, board access checks
+  app/routes/            API routes: accounts, admin, boards, chat
+  app/auth.py            password hashing, session settings, login rate limiting
   app/db.py              SQLite access
   app/board.py           board models, default board, operations
   app/ai.py              OpenRouter calls
@@ -286,7 +289,7 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
 - [x] Part 19: Card assignees (the people on a board), an assignee filter, "assigned to me" counts, and AI assignment
 - [x] Part 20: Live updates: people on a shared board see each other's changes without reloading
-- [ ] Part 21: Split `backend/app/main.py` into route modules (no behavior change)
+- [x] Part 21: Split `backend/app/main.py` into route modules (no behavior change)
 - [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
 
 ### Part 12: Accounts and multiple boards
@@ -456,3 +459,13 @@ Checklist:
 - [x] Docs
 
 Results: 190 backend tests (unchanged), 129 Vitest (98.3% lines, 94.9% branches), 43 Playwright, all passing.
+
+### Part 21: Route modules
+
+Decisions:
+- `main.py` had grown to 494 lines covering accounts, admin, boards, sharing, activity and chat. It now only builds the app (middleware, startup, health check, routers, static files: 45 lines). Each area is an `APIRouter` in `app/routes/` (`accounts.py`, `admin.py`, `boards.py`, `chat.py`), and the dependencies they share (signed-in user, admin, board lookups) are in `app/access.py`
+- The code was moved verbatim by a script that cut each block out of `main.py` by its first and last lines, so nothing was retyped; only imports, `@app` to `@router`, and section comments to module docstrings changed
+- No behavior change, checked three ways: all 190 backend tests (including live) pass unchanged except one import (`ACTIVITY_SHOWN` now comes from `app.routes.boards`); the committed `openapi.json` still matches the app exactly (`test_openapi.py`), so every route, model and operation id is the same; and `ruff check --select F` (run once with `uvx`, not added to the project) finds no unused or undefined names
+- No router tags or prefixes were added, since those would change the OpenAPI schema and the generated TypeScript types for no benefit
+
+Results: 190 backend tests (99.88% coverage), unchanged frontend (129 Vitest, 43 Playwright).

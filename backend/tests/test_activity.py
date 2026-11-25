@@ -5,7 +5,8 @@ from fastapi.testclient import TestClient
 
 from app import db
 from app.board import DEFAULT_BOARD, Board, Column, Operation, board_stats, describe_changes
-from app.main import ACTIVITY_SHOWN, app
+from app.main import app
+from app.routes.boards import ACTIVITY_SHOWN
 
 
 def sample() -> Board:
