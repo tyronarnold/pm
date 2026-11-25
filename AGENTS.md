@@ -8,7 +8,7 @@ This project is building a Project Management App. Key features:
 - A user has any number of Kanban boards, one per project, and can create, rename, switch between and delete them
 - Cards can be assigned to the people on their board, and boards can be filtered by assignee
 - Each board has an activity log of who changed what, and an overview shows every board's cards, progress and overdue count
-- A board's owner can share it with other users by username; members can view and edit it and use the AI chat on it, and can leave it
+- A board's owner can share it with other users by username; members can view and edit it and use the AI chat on it, and can leave it. An open board shows changes made by others within a few seconds
 - Each board's columns can be added, renamed, reordered and removed (when empty); the last column holds finished work
 - The cards on the Kanban board can be moved with drag and drop, and edited
 - There is an AI chat feature in a sidebar; the AI is able to create / edit / move one or more cards

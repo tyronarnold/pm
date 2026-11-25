@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -17,7 +17,7 @@ import { ChatSidebar } from "@/components/ChatSidebar";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { NewColumnForm } from "@/components/NewColumnForm";
-import { saveBoard } from "@/lib/api";
+import { getBoard, saveBoard } from "@/lib/api";
 import {
   addCard,
   addColumn,
@@ -49,6 +49,9 @@ type KanbanBoardProps = {
 
 type Notice = "save-failed" | "conflict" | null;
 
+// How often an open board checks the server for changes made by someone else (or another tab).
+export const POLL_INTERVAL_MS = 5000;
+
 export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, username }: KanbanBoardProps) => {
   const [board, setBoard] = useState<BoardData>(initialBoard);
   const [notice, setNotice] = useState<Notice>(null);
@@ -61,6 +64,30 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, use
   const version = useRef(initialVersion); // version of the last board the server confirmed
   const pending = useRef<BoardData | null>(null); // latest board waiting to be saved
   const saving = useRef(false);
+  const dragging = useRef(false);
+  const typingTitle = useRef(false); // a column title changed locally, saved on blur / Enter
+
+  // Live updates: show a newer version from the server, unless that could lose work here
+  // (an unsaved or in-flight change, a drag, a column title being typed). Skipped while the
+  // tab is hidden; a failed check is simply tried again next time.
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const busy = () => saving.current || pending.current || dragging.current || typingTitle.current;
+      if (document.hidden || busy()) {
+        return;
+      }
+      try {
+        const latest = await getBoard(boardId);
+        if (latest.version > version.current && !busy()) {
+          version.current = latest.version;
+          setBoard(latest.board);
+        }
+      } catch {
+        // Offline or the server is restarting: check again on the next tick.
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [boardId]);
 
   // Replace the board with one from the server (after a conflict or an AI change).
   // Any unsent local change was based on an older board, so it is dropped and the user is told.
@@ -95,6 +122,7 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, use
   };
 
   const persist = (next: BoardData) => {
+    typingTitle.current = false;
     pending.current = next;
     if (!saving.current) {
       void flush();
@@ -115,12 +143,19 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, use
   const cardsById = useMemo(() => board.cards, [board.cards]);
 
   const handleDragStart = (event: DragStartEvent) => {
+    dragging.current = true;
     setActiveCardId(event.active.id as string);
+  };
+
+  // After a drop, or when Escape cancels the drag.
+  const endDrag = () => {
+    dragging.current = false;
+    setActiveCardId(null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setActiveCardId(null);
+    endDrag();
 
     if (!over || active.id === over.id) {
       return;
@@ -133,8 +168,10 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, use
   };
 
   // Typing only updates local state; the title is saved on blur / Enter.
-  const handleRenameColumn = (columnId: string, title: string) =>
+  const handleRenameColumn = (columnId: string, title: string) => {
+    typingTitle.current = true;
     setBoard(renameColumn(board, columnId, title));
+  };
 
   const handleAddCard = (columnId: string, fields: CardFields) =>
     update(addCard(board, columnId, { ...fields, id: createId("card") }));
@@ -192,6 +229,7 @@ export const KanbanBoard = ({ boardId, initialBoard, initialVersion, people, use
               collisionDetection={closestCorners}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onDragCancel={endDrag}
             >
               {/* Columns share the width; past what fits, the row scrolls sideways. */}
               <section className="flex flex-col gap-6 lg:flex-row lg:overflow-x-auto lg:pb-4">

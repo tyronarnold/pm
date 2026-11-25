@@ -285,7 +285,7 @@ Roadmap (one part per working session; check off as done):
 - [x] Part 17: Board activity log and a dashboard of boards (card counts, overdue cards)
 - [x] Part 18: Coverage reporting with thresholds for backend and frontend; review and fill gaps
 - [x] Part 19: Card assignees (the people on a board), an assignee filter, "assigned to me" counts, and AI assignment
-- [ ] Part 20: Live updates: people on a shared board see each other's changes without reloading
+- [x] Part 20: Live updates: people on a shared board see each other's changes without reloading
 - [ ] Part 21: Split `backend/app/main.py` into route modules (no behavior change)
 - [x] Follow-ups found along the way: changing the password does not sign out other sessions (the cookie only holds the user id); `docs/screenshot.png` shows the old single-board header (both done in Part 13)
 
@@ -439,3 +439,20 @@ Checklist:
 - [x] Docs
 
 Results: 190 backend tests (including live, 99.87% coverage), 122 Vitest (98.7% lines), 42 Playwright, all passing.
+
+### Part 20: Live updates
+
+Decisions:
+- Polling, not WebSockets or server-sent events: an open board fetches itself every 5 seconds (`POLL_INTERVAL_MS`) and shows the server's board when its version is newer. The version numbers already say whether anything changed, and no server changes or long-lived connections are needed, which suits one container serving a few people
+- A check is skipped while the tab is hidden or when showing the server's board could lose work here: a save queued or in flight (that save will hit a 409 and load the latest board anyway), a card being dragged, or a column title typed but not yet saved. A failed check is ignored and retried on the next tick
+- Only the board's contents update live; the board list, names and members still refresh when a board is opened (or the page reloaded)
+- Bug fixed on the way: cancelling a drag with Escape never ran `handleDragEnd`, so drag state was left set; `onDragCancel` now clears it (and the poll pause with it)
+- The existing "stale tab" e2e test blocks the second tab's checks with `page.route`, otherwise polling could bring that tab up to date before it saves and the 409 would not happen
+- Unit tests use Vitest fake timers (`shouldAdvanceTime`, so user events and `waitFor` still run) and advance one interval at a time
+
+Checklist:
+- [x] Polling with the pauses above, drag cancel handled
+- [x] Tests: Vitest (seven live-update cases), Playwright (an owner sees a member's edit without reloading; stale-tab test kept deterministic)
+- [x] Docs
+
+Results: 190 backend tests (unchanged), 129 Vitest (98.3% lines, 94.9% branches), 43 Playwright, all passing.

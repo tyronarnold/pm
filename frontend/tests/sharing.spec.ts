@@ -100,3 +100,18 @@ test("the owner assigns a card to a member, who finds it under their name", asyn
   await member.getByRole("button", { name: "Overview" }).click();
   await expect(member.getByRole("region", { name: "Overview" }).getByText("1 assigned to you")).toBeVisible();
 });
+
+test("the owner sees a member's change without reloading", async ({ browser }) => {
+  const { owner, member, memberName } = await twoUsers(browser);
+  await shareWith(owner, memberName);
+  await owner.getByRole("region", { name: "Sharing" }).getByRole("button", { name: "Close" }).click();
+
+  await member.goto(owner.url());
+  const card = member.getByTestId("card-card-6");
+  await card.getByRole("button", { name: "Edit QA micro-interactions", exact: true }).click();
+  await card.getByLabel("Card title").fill("Changed live by the member");
+  await saved(member, () => card.getByRole("button", { name: "Save" }).click());
+
+  // The owner's page checks for changes every few seconds.
+  await expect(owner.getByText("Changed live by the member")).toBeVisible({ timeout: 15_000 });
+});

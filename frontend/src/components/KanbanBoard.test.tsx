@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { KanbanBoard } from "@/components/KanbanBoard";
+import { KanbanBoard, POLL_INTERVAL_MS } from "@/components/KanbanBoard";
 import { initialData, type BoardData } from "@/lib/kanban";
 
 const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
@@ -525,6 +525,111 @@ describe("KanbanBoard", () => {
       expect(titles()).toEqual(["Align roadmap themes"]);
       await userEvent.selectOptions(filter, "Unassigned");
       expect(titles()).toHaveLength(6);
+    });
+  });
+
+  describe("live updates", () => {
+    // What GET /api/boards/1 returns: the board as saved by someone else.
+    let latest: { version: number; board: BoardData };
+
+    const changedElsewhere = (version: number): { version: number; board: BoardData } => ({
+      version,
+      board: {
+        ...initialData,
+        cards: { ...initialData.cards, "card-1": { ...initialData.cards["card-1"], title: "Changed elsewhere" } },
+      },
+    });
+
+    const gets = () => fetchMock.mock.calls.filter(([url, init]) => url === "/api/boards/1" && !init);
+
+    const tick = () => act(() => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS));
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      latest = { version: 1, board: initialData };
+      fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+        url === "/api/boards/1" && !init ? json({ id: 1, name: "Board", owner: "user", members: [], ...latest }) : fakeServer(url, init)
+      );
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("shows a newer version from the server, and bases the next save on it", async () => {
+      renderBoard();
+      latest = changedElsewhere(4);
+      await tick();
+      expect(screen.getByText("Changed elsewhere")).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "Delete Gather customer signals" }));
+      await waitFor(() => expect(puts()).toHaveLength(1));
+      expect(puts()[0].version).toBe(4);
+      expect(puts()[0].board.cards["card-1"].title).toBe("Changed elsewhere");
+    });
+
+    it("ignores the server's board when it is not newer", async () => {
+      renderBoard();
+      latest = { ...changedElsewhere(1) };
+      await tick();
+      expect(gets()).toHaveLength(1);
+      expect(screen.queryByText("Changed elsewhere")).not.toBeInTheDocument();
+    });
+
+    it("does not check while a change is being saved", async () => {
+      fetchMock.mockImplementationOnce(() => new Promise<Response>(() => {})); // the save never finishes
+      renderBoard();
+      await userEvent.click(screen.getByRole("button", { name: "Delete Align roadmap themes" }));
+      latest = changedElsewhere(2);
+      await tick();
+      expect(gets()).toHaveLength(0);
+      expect(screen.queryByText("Changed elsewhere")).not.toBeInTheDocument();
+    });
+
+    it("does not overwrite a column title being typed", async () => {
+      renderBoard();
+      const title = within(getFirstColumn()).getByLabelText("Column title");
+      await userEvent.clear(title);
+      await userEvent.type(title, "Half typ");
+      latest = changedElsewhere(2);
+      await tick();
+      expect(gets()).toHaveLength(0);
+      expect(title).toHaveValue("Half typ");
+
+      await userEvent.tab(); // saving the title ends the pause
+      await waitFor(() => expect(puts()).toHaveLength(1));
+    });
+
+    it("does not check while the tab is hidden", async () => {
+      const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+      renderBoard();
+      latest = changedElsewhere(2);
+      await tick();
+      expect(gets()).toHaveLength(0);
+
+      hidden.mockReturnValue(false);
+      await tick();
+      expect(screen.getByText("Changed elsewhere")).toBeInTheDocument();
+    });
+
+    it("tries again after a failed check", async () => {
+      renderBoard();
+      fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await tick();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+      latest = changedElsewhere(2);
+      await tick();
+      expect(screen.getByText("Changed elsewhere")).toBeInTheDocument();
+    });
+
+    it("stops checking when the board is closed", async () => {
+      const { unmount } = renderBoard();
+      await tick();
+      unmount();
+      await tick();
+      expect(gets()).toHaveLength(1);
     });
   });
 });

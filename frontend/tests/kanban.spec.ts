@@ -96,6 +96,10 @@ test("a stale tab loads the latest board instead of overwriting it", async ({ pa
   const other = await page.context().newPage();
   await other.goto("/");
   await expect(other.getByTestId("card-card-1")).toBeVisible();
+  // Keep this tab out of date: stop its live-update checks from loading the newer board.
+  await other.route(/\/api\/boards\/\d+$/, (route) =>
+    route.request().method() === "GET" ? route.abort() : route.continue()
+  );
 
   // First tab saves an edit; the second tab still has the older version.
   const card = page.getByTestId("card-card-1");
