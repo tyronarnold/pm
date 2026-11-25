@@ -12,7 +12,7 @@ SQLite, accessed with Python's built-in `sqlite3` module (no ORM).
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
     session_version INTEGER NOT NULL DEFAULT 0,
@@ -57,6 +57,7 @@ CREATE INDEX IF NOT EXISTS board_activity_board_id ON board_activity (board_id, 
 - `users.password_hash` holds an argon2id hash (argon2-cffi), never the password. On startup the demo `user` account is created with the hash of `password` if missing, or given that hash if it has none (databases from before hashing); an existing hash is never replaced. Sign-in checks the hash.
 - `users.session_version` is copied into the session cookie at sign-in and checked on every request. Changing the password increments it, so every other session is signed out (the session that made the change is given the new value and stays signed in).
 - `board_activity` holds what happened on a board: who (`username`, kept as text so entries outlive the account), what (`message`, a sentence such as `moved "Launch" from "Backlog" to "Done"`), whether the AI assistant made the change (`via_ai`), and when. Each board keeps its newest 200 entries (`ACTIVITY_KEPT`); older ones are deleted as new ones are added. Deleting the board deletes its activity.
+- `users.id` uses `AUTOINCREMENT`, so the id of a deleted user is never given to a new one. The session cookie identifies the user by id (and session version), so without it an old session of a deleted account could sign in as whoever registered next.
 - `users.is_admin` (0 or 1) marks admins. At startup, if no user is an admin, the demo `user` account becomes one, so a new or upgraded database always has an admin; the API refuses to remove the last admin.
 - Timestamps are UTC text (`YYYY-MM-DD HH:MM:SS`). `updated_at` is set on every save and rename.
 - `boards.version` starts at 1 and goes up by one on every save of the board data (not on renames). It is used for optimistic concurrency (see Saving below).
@@ -113,6 +114,7 @@ There is no migration framework; `init_db` upgrades databases made by earlier ve
 - `users.session_version` missing: added with `ALTER TABLE` (default 0). Sessions signed before it existed have no version in their cookie, so their users sign in once more.
 - `boards.version` missing: added with `ALTER TABLE` (boards start at version 1).
 - `users.is_admin` missing: added with `ALTER TABLE` (default 0); the startup rule above then makes `user` an admin.
+- `users` without `AUTOINCREMENT`: SQLite cannot change a key in place, so the table is rebuilt the documented way: foreign keys off (so dropping `users` cannot delete boards), copy into `users_new` with the same ids, drop `users`, rename `users_new` to `users` (the other tables' references resolve to it), all in one transaction.
 - `board_activity` missing: created like any new table; existing boards start with an empty log.
 - `board_members` missing: created like any new table (`CREATE TABLE IF NOT EXISTS`).
 - `boards.name` missing (the one-board-per-user design, where `boards.user_id` was `UNIQUE`): SQLite cannot drop a constraint, so the table is rebuilt in one transaction (rename, create the new table, copy every row, drop the old one). Board ids and versions are kept, and each board is named "My board".

@@ -346,3 +346,22 @@ def test_cards_can_be_assigned(signed_in, board_id):
     board = default_board()
     board["cards"]["card-1"]["assignee"] = "user"
     assert put(signed_in, board_id, board, 1).json()["board"]["cards"]["card-1"]["assignee"] == "user"
+
+
+def test_init_db_rebuilds_users_without_autoincrement_keeping_everything(db_path):
+    make_old_database(db_path, with_version=True)
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
+        conn.execute("INSERT INTO users (username) VALUES ('alice')")
+    db.init_db()
+    with closing(sqlite3.connect(db_path, autocommit=True)) as conn:
+        assert "AUTOINCREMENT" in conn.execute("SELECT sql FROM sqlite_master WHERE name = 'users'").fetchone()[0]
+        assert conn.execute("SELECT id, username FROM users ORDER BY id").fetchall() == [(1, "user"), (2, "alice")]
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert db.list_boards(1)[0].data == DEFAULT_BOARD.model_dump_json()
+
+    # Deleting the newest user and adding another does not reuse the id.
+    db.delete_user(2)
+    assert db.create_user("bob", "hash") == 3
+    # The rebuilt table still deletes a user's boards with them.
+    db.delete_user(1)
+    assert db.list_boards(1) == []

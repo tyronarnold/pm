@@ -4,15 +4,38 @@ from contextlib import closing
 from pathlib import Path
 from typing import NamedTuple
 
-USERS_SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
+# AUTOINCREMENT: a deleted user's id is never given to a new user. Sessions identify the
+# user by id, so a reused id would let an old session of a deleted account sign in as
+# whoever was given that id next.
+def _users_schema(table: str) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {table} (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     password_hash TEXT,
     session_version INTEGER NOT NULL DEFAULT 0,
     is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+"""
+
+
+USERS_SCHEMA = _users_schema("users")
+
+# Databases from before AUTOINCREMENT. SQLite cannot change a key in place, so the table
+# is rebuilt the documented way: with foreign keys off (dropping `users` must not delete
+# boards), copy into a new table, drop the old one and rename the new one to `users`, so
+# the references in other tables resolve to it.
+USERS_AUTOINCREMENT_MIGRATION = f"""
+PRAGMA foreign_keys = OFF;
+BEGIN;
+{_users_schema("users_new")}
+INSERT INTO users_new (id, username, password_hash, session_version, is_admin, created_at)
+    SELECT id, username, password_hash, session_version, is_admin, created_at FROM users;
+DROP TABLE users;
+ALTER TABLE users_new RENAME TO users;
+COMMIT;
+PRAGMA foreign_keys = ON;
 """
 
 BOARDS_SCHEMA = """
@@ -125,6 +148,9 @@ def init_db() -> None:
             conn.execute("ALTER TABLE users ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0")
         if "is_admin" not in users:
             conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+        users_sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'users'").fetchone()[0]
+        if "AUTOINCREMENT" not in users_sql:
+            conn.executescript(USERS_AUTOINCREMENT_MIGRATION)
         old_boards = _columns(conn, "boards")
         if old_boards and "name" not in old_boards:
             if "version" not in old_boards:

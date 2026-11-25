@@ -477,3 +477,11 @@ Two bugs found by tracing the frontend's async flows, each reproduced with a fai
 - Clicking into a column title and leaving it unchanged saved the board anyway, bumping the version (which makes other people's live updates refetch and can give another open tab a needless conflict). Leaving a title now saves only if it was typed in. Test: focus and leave a title (by Tab and by Enter) sends no save
 
 Results: 190 backend tests, 131 Vitest (98.3% lines), 43 Playwright, all passing.
+
+### Review pass: sessions and user ids
+
+- Security bug: `users.id` was a plain `INTEGER PRIMARY KEY`, and SQLite gives a new row one more than the largest id, so the id of the newest user was reused after they deleted their account. The session cookie identifies the user by id and session version (0 for every new account), so an old session of the deleted account (another device, for example) signed in as whoever registered next. Reproduced first with a failing test (the old session got 200 as the new user)
+- Fix at the root: `users.id` is now `AUTOINCREMENT`, so ids are never reused. Existing databases are rebuilt at startup (foreign keys off, copy with the same ids into `users_new`, drop, rename, one transaction); a test checks ids, boards, foreign keys and cascading deletes after the rebuild, and that a deleted newest id is not given out again
+- Checked on the real app after a backup: both accounts and both boards kept their ids and data, and `PRAGMA foreign_key_check` is clean
+
+Results: 192 backend tests (including live, 99.88% coverage), frontend unchanged (131 Vitest, 43 Playwright).

@@ -133,3 +133,15 @@ def test_changing_the_password_signs_out_other_sessions_but_not_this_one(client)
         assert login(other_session, "alice", "new-password").status_code == 200
         assert other_session.get("/api/me").status_code == 200
 
+
+
+def test_an_old_session_of_a_deleted_account_cannot_reach_the_next_account(client):
+    # alice has the highest user id, so a new account could be given her id after she leaves.
+    register(client)
+    with TestClient(app) as old_device:
+        login(old_device, "alice", "alice-password")
+        client.request("DELETE", "/api/me", json={"password": "alice-password"})
+        with TestClient(app) as newcomer:
+            register(newcomer, "bob", "bob-password")
+        assert old_device.get("/api/me").status_code == 401
+        assert old_device.get("/api/boards").status_code == 401
